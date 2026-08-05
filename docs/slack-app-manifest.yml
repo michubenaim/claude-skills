@@ -1,0 +1,45 @@
+# Slack app manifest for the Hours Tracker bot.
+#
+# Before creating the app: deploy the Apps Script web app first (docs/SETUP.md
+# step 4-5) so you have the exec URL and shared secret to paste in below.
+# Every REQUEST_URL_PLACEHOLDER below must be replaced with the same value:
+#   https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec?secret=YOUR_SHARED_SECRET
+#
+# To use: Slack app config page -> "Create New App" -> "From an app manifest"
+# -> paste this file in (after editing the placeholders) -> pick your workspace.
+
+display_information:
+  name: Hours Tracker
+  description: Log daily project hours and get a monthly tally per person per project.
+  background_color: "#2c2d30"
+
+features:
+  bot_user:
+    display_name: Hours Tracker
+    always_online: true
+  slash_commands:
+    - command: /log-hours
+      url: REQUEST_URL_PLACEHOLDER
+      description: Log the hours you worked on each project today
+      should_escape: false
+    - command: /hours-report
+      url: REQUEST_URL_PLACEHOLDER
+      description: Show the hours tally for a month (defaults to current month)
+      usage_hint: "[YYYY-MM]"
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - chat:write
+      - im:write
+      - users:read
+
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: REQUEST_URL_PLACEHOLDER
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
