@@ -7,18 +7,22 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
 
 1. Create a new Google Sheet (any name, e.g. "Team Hours").
 2. Note its ID from the URL: `https://docs.google.com/spreadsheets/d/THIS_PART/edit`.
-3. Add a `Projects` tab with header row `ProjectName | SlackChannel | Active`,
-   then one row per project you want people to log hours against, e.g.:
+3. Add a `Projects` tab with header row
+   `ProjectName | SlackChannel | Active | BudgetHours`, then one row per
+   project you want people to log hours against, e.g.:
 
-   | ProjectName | SlackChannel | Active |
-   |---|---|---|
-   | Acme Rebrand | #acme-rebrand | TRUE |
-   | Internal Tools | #internal-tools | TRUE |
+   | ProjectName | SlackChannel | Active | BudgetHours |
+   |---|---|---|---|
+   | Acme Rebrand | #acme-rebrand | TRUE | 120 |
+   | Internal Tools | #internal-tools | TRUE | |
 
    `SlackChannel` is just for your own reference (which channel = which
    project); the bot doesn't read Slack channels automatically in v1. Set
    `Active` to `FALSE` to hide a finished project from the daily modal
-   without deleting its history.
+   without deleting its history. `BudgetHours` is optional — leave it blank
+   for an uncapped project, or set a total hours allocation to track
+   draw-down (the modal shows remaining hours, and the bot posts a warning
+   to `REPORT_CHANNEL_ID` at 90% and 100% used).
 
 The `TimeEntries` and `Users` tabs are created automatically the first time
 the script runs.
@@ -28,7 +32,8 @@ the script runs.
 1. In the Sheet: **Extensions > Apps Script**.
 2. Delete the default `Code.gs` stub, then create files matching the ones in
    `apps-script/` in this repo (`Code.gs`, `Config.gs`, `SlackApi.gs`,
-   `Sheets.gs`, `Modals.gs`, `Triggers.gs`) and paste in each file's contents.
+   `Sheets.gs`, `Modals.gs`, `Triggers.gs`, `Budgets.gs`, `Dashboard.gs`) and
+   paste in each file's contents.
    (If you use [`clasp`](https://github.com/google/clasp) instead, `clasp push`
    from the `apps-script/` folder does this for you.)
 3. Open `appsscript.json` via **Project Settings > Show "appsscript.json"
@@ -57,12 +62,20 @@ the URL itself.
 | `SPREADSHEET_ID` | the Sheet ID from step 1 |
 | `SLACK_SHARED_SECRET` | the secret from step 3 |
 | `SLACK_BOT_TOKEN` | filled in after step 6 below (`xoxb-...`) |
-| `REPORT_CHANNEL_ID` | optional: a channel ID to auto-post the monthly tally into on the 1st |
+| `REPORT_CHANNEL_ID` | optional: a channel ID to auto-post the monthly tally + budget warnings into |
 | `REMINDER_HOUR` | optional: hour (0-23) to send the evening reminder, default `18` |
+| `DASHBOARD_ALLOWED_EMAILS` | comma-separated emails/domains allowed to view the dashboard (step 6), e.g. `alex@co.com, @co.com` |
 
-## 5. Deploy the web app
+## 5. Deploy the Slack web app
 
-1. **Deploy > New deployment > Web app**.
+This project has **two separate deployments from the same script**: one
+that Slack calls (public, unauthenticated, protected by the shared secret),
+and one for the dashboard (requires Google sign-in, checked against
+`DASHBOARD_ALLOWED_EMAILS`). Apps Script supports multiple simultaneous
+deployments of one project, each with its own URL and its own
+Execute-as/access settings — do this one first.
+
+1. **Deploy > New deployment > Web app**. Give it a description like "Slack".
 2. Execute as: **Me**. Who has access: **Anyone**.
 3. Deploy, then copy the Web app URL (`https://script.google.com/macros/s/.../exec`).
 4. Your Slack Request URL for every command/interactivity field is:
@@ -71,16 +84,31 @@ the URL itself.
    https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec?secret=YOUR_SHARED_SECRET
    ```
 
-Re-deploy (**Deploy > Manage deployments > Edit > New version**) any time
-you change the `.gs` files — editing them alone doesn't update the live URL.
+Re-deploy (**Deploy > Manage deployments > Edit this deployment > New
+version**) any time you change the `.gs` files — editing them alone doesn't
+update the live URL.
 
-## 6. Create the Slack app
+## 6. Deploy the dashboard
+
+1. **Deploy > New deployment > Web app**. Give it a description like
+   "Dashboard" (this is a second, independent deployment of the same
+   project — don't edit the Slack one from step 5).
+2. Execute as: **User accessing the web app**. Who has access: **Anyone**
+   (this still forces a Google sign-in per visitor — "Anyone" here means
+   "any Google account", not anonymous; the app then checks that account's
+   email against `DASHBOARD_ALLOWED_EMAILS` and shows a plain "not
+   authorized" page if it isn't listed).
+3. Deploy, then share this URL (not the Slack one) with whoever should see
+   the dashboard.
+
+## 7. Create the Slack app
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) > **Create New App
    > From an app manifest**.
 2. Pick your workspace.
 3. Paste in `docs/slack-app-manifest.yml`, with every
-   `REQUEST_URL_PLACEHOLDER` replaced with the URL from step 5.
+   `REQUEST_URL_PLACEHOLDER` replaced with the Slack deployment URL from
+   step 5 (not the dashboard URL).
 4. Create the app, then **Install to Workspace**.
 5. Under **OAuth & Permissions**, copy the **Bot User OAuth Token**
    (`xoxb-...`) into the `SLACK_BOT_TOKEN` script property from step 4.
@@ -88,7 +116,7 @@ you change the `.gs` files — editing them alone doesn't update the live URL.
 This is an internal, single-workspace app — no Slack App Directory review
 needed.
 
-## 7. Install the reminder schedule
+## 8. Install the reminder schedule
 
 Back in the Apps Script editor, select `installTriggers_` from the function
 dropdown and click **Run** once (authorize if prompted). This installs:
@@ -98,12 +126,14 @@ dropdown and click **Run** once (authorize if prompted). This installs:
 - A monthly trigger on the 1st that posts the previous month's tally to
   `REPORT_CHANNEL_ID`, if you set one.
 
-## 8. Try it
+## 9. Try it
 
 In Slack, run `/log-hours` in any channel or DM with the bot. Fill in hours
 for whichever projects you worked on, submit, and check the `TimeEntries`
 tab in the Sheet for the new row. Run `/hours-report` to see the tally for
-the current month.
+the current month, and open the dashboard URL from step 6 (signed into an
+allowed Google account) to see project budget cards and the same month as
+a table.
 
 ## Notes / limits
 
@@ -119,3 +149,8 @@ the current month.
   tier, no card required) in front that verifies `X-Slack-Signature` and
   forwards to this same Apps Script URL — everything else in this repo
   stays the same.
+- If `DASHBOARD_ALLOWED_EMAILS` is unset, the dashboard denies everyone
+  (fail closed) rather than defaulting to open access.
+- Budget warnings only fire once per threshold crossing (90%, then 100%),
+  computed from the before/after totals of each submission — so they won't
+  spam the channel on every subsequent entry once a project is already over.

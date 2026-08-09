@@ -3,8 +3,14 @@
 ## Tabs (auto-created except `Projects`, which you fill in yourself)
 
 **Projects** (you maintain this)
-| ProjectName | SlackChannel | Active |
-|---|---|---|
+| ProjectName | SlackChannel | Active | BudgetHours |
+|---|---|---|---|
+
+`BudgetHours` is optional — blank means uncapped. When set, it's a
+lifetime allocation (not scoped to a month): the modal shows remaining
+hours next to the project, `/hours-report` includes an all-time budget
+summary, and the bot posts a warning to `REPORT_CHANNEL_ID` when a
+project crosses 90% and 100% used.
 
 **Users** (auto-synced from Slack nightly; `IncludeInReminders` is yours to edit)
 | SlackUserID | SlackUserName | IncludeInReminders |
@@ -59,3 +65,11 @@ non-technical.
 then `Project`. Values: `Hours` (SUM). Filters: `Date`, condition "text
 contains" your target month string (e.g. `2026-08`). Sheets remembers this
 pivot's config, so you just flip the filter value each month.
+
+### Option D: the dashboard
+
+`docs/SETUP.md` step 6 deploys a small read-only web page (project budget
+cards + the current month's person-by-project table) restricted to the
+Google accounts in `DASHBOARD_ALLOWED_EMAILS`. It's live — no month field
+to set, no formulas to maintain — but only shows the current month, not an
+arbitrary past one (use Option A/B/C for historical months).

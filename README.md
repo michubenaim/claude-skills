@@ -11,6 +11,10 @@ tally per team member per project — no subscriptions, no hosting bill.
 - `/hours-report [YYYY-MM]` gives an on-demand tally (defaults to the
   current month); an optional monthly auto-post does the same to a channel
   on the 1st.
+- Projects can optionally carry a total hour budget; the modal shows
+  remaining balance, and the bot posts a warning at 90% and 100% used.
+- A read-only dashboard (project budget cards + the current month's
+  per-person table), restricted to Google accounts you approve.
 - All data lives in a Google Sheet you own, so a monthly pivot table /
   export is always one click away — see `docs/SHEET_SCHEMA.md`.
 
@@ -42,12 +46,14 @@ manifest in `docs/slack-app-manifest.yml`, wire up the reminder schedule).
 
 ```
 apps-script/
-  Code.gs        HTTP entry points (doPost/doGet) -- slash commands & interactivity
+  Code.gs        HTTP entry points (doPost/doGet) -- slash commands, interactivity & dashboard routing
   Config.gs      Script Properties (secrets/config) accessors
   SlackApi.gs    Slack Web API calls + inbound request auth
   Sheets.gs      Google Sheets read/write helpers
   Modals.gs      Slack Block Kit view/message builders
   Triggers.gs    Evening reminder + monthly tally scheduled functions
+  Budgets.gs     Project budget threshold-crossing warnings
+  Dashboard.gs   Read-only HTML dashboard (project budgets + monthly table)
   appsscript.json
 docs/
   SETUP.md               step-by-step setup

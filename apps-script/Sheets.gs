@@ -1,12 +1,13 @@
 /**
  * All Google Sheets read/write logic. Sheet tabs:
  *
- * Projects     | ProjectName | SlackChannel | Active
+ * Projects     | ProjectName | SlackChannel | Active | BudgetHours
  * TimeEntries  | Timestamp | Date | SlackUserID | SlackUserName | Project | Hours | Note
  * Users        | SlackUserID | SlackUserName | IncludeInReminders
  *
  * Projects and Users are edited by a human admin (Active / IncludeInReminders
- * columns). TimeEntries is append-only, written by the bot. A MonthlyTally
+ * columns). BudgetHours is optional -- leave it blank for an uncapped
+ * project. TimeEntries is append-only, written by the bot. A MonthlyTally
  * tab (created once, manually) reads TimeEntries via QUERY formulas -- see
  * docs/SHEET_SCHEMA.md.
  */
@@ -14,6 +15,7 @@
 var PROJECTS_SHEET = 'Projects';
 var TIME_ENTRIES_SHEET = 'TimeEntries';
 var USERS_SHEET = 'Users';
+var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours'];
 
 function getSpreadsheet_() {
   return SpreadsheetApp.openById(getSpreadsheetId_());
@@ -30,18 +32,30 @@ function getOrCreateSheet_(name, headers) {
   return sheet;
 }
 
-function getActiveProjects_() {
-  var sheet = getOrCreateSheet_(PROJECTS_SHEET, ['ProjectName', 'SlackChannel', 'Active']);
+// Returns every row in Projects (active or not) as
+// { name, channel, active, budget } -- budget is a Number, or null if the
+// BudgetHours cell is blank (meaning uncapped).
+function getAllProjects_() {
+  var sheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
   var rows = sheet.getDataRange().getValues();
   var projects = [];
   for (var i = 1; i < rows.length; i++) {
     var name = rows[i][0];
+    if (!name) continue;
     var active = rows[i][2];
-    if (name && (active === true || String(active).toUpperCase() === 'TRUE')) {
-      projects.push(name);
-    }
+    var budgetRaw = rows[i][3];
+    projects.push({
+      name: name,
+      channel: rows[i][1],
+      active: active === true || String(active).toUpperCase() === 'TRUE',
+      budget: (budgetRaw === '' || budgetRaw === null || budgetRaw === undefined) ? null : Number(budgetRaw)
+    });
   }
   return projects;
+}
+
+function getActiveProjects_() {
+  return getAllProjects_().filter(function (p) { return p.active; });
 }
 
 function appendTimeEntries_(userId, userName, dateStr, projectHours, note) {
@@ -113,6 +127,21 @@ function computeMonthlyTally_(monthStr) {
     tally[userName][project] = (tally[userName][project] || 0) + hours;
   }
   return tally;
+}
+
+// Returns { projectName: totalHoursEverLogged }. Budgets are a lifetime
+// allocation (not scoped to a month), so this scans every TimeEntries row.
+function getProjectTotalsAllTime_() {
+  var sheet = getOrCreateSheet_(TIME_ENTRIES_SHEET,
+    ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note']);
+  var rows = sheet.getDataRange().getValues();
+  var totals = {};
+  for (var i = 1; i < rows.length; i++) {
+    var project = rows[i][4];
+    var hours = Number(rows[i][5]) || 0;
+    totals[project] = (totals[project] || 0) + hours;
+  }
+  return totals;
 }
 
 function formatDate_(value) {

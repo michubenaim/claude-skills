@@ -6,7 +6,12 @@
 // rows dynamically without extra round-trips, so v1 shows every active
 // project and the user leaves the ones they didn't touch blank -- fine for
 // a team with a handful of concurrent projects. See README for scaling notes.
-function buildLogHoursModal_(projects, dateStr) {
+//
+// `projects` is an array of { name, budget } (budget may be null/uncapped).
+// `totals` is { projectName: hoursLoggedSoFar }, used to show a remaining-
+// balance hint next to budgeted projects.
+function buildLogHoursModal_(projects, dateStr, totals) {
+  totals = totals || {};
   var blocks = [
     {
       type: 'context',
@@ -23,11 +28,18 @@ function buildLogHoursModal_(projects, dateStr) {
   }
 
   projects.forEach(function (project, i) {
+    var labelText = project.name;
+    if (project.budget != null) {
+      var remaining = project.budget - (totals[project.name] || 0);
+      labelText += remaining < 0
+        ? ' (' + Math.abs(remaining).toFixed(1) + 'h over budget)'
+        : ' (' + remaining.toFixed(1) + 'h left)';
+    }
     blocks.push({
       type: 'input',
       block_id: 'project_' + i,
       optional: true,
-      label: { type: 'plain_text', text: project },
+      label: { type: 'plain_text', text: labelText },
       element: {
         type: 'number_input',
         is_decimal_allowed: true,
@@ -49,7 +61,7 @@ function buildLogHoursModal_(projects, dateStr) {
   return {
     type: 'modal',
     callback_id: 'log_hours_submit',
-    private_metadata: JSON.stringify({ date: dateStr, projects: projects }),
+    private_metadata: JSON.stringify({ date: dateStr, projects: projects.map(function (p) { return p.name; }) }),
     title: { type: 'plain_text', text: 'Log today\'s hours' },
     submit: { type: 'plain_text', text: 'Submit' },
     close: { type: 'plain_text', text: 'Cancel' },
@@ -106,6 +118,25 @@ function formatTallyMessage_(monthStr, tally) {
   });
 
   return '*Hours tally for ' + monthStr + '*\n```\n' + lines.join('\n') + '\n```';
+}
+
+// Formats an all-time budget draw-down summary for projects that have a
+// BudgetHours set. `projects` is [{ name, budget }], `totals` is
+// { projectName: hoursLoggedAllTime }.
+function formatBudgetsMessage_(projects, totals) {
+  var budgeted = projects.filter(function (p) { return p.budget != null; });
+  if (budgeted.length === 0) return '';
+
+  var lines = [];
+  budgeted.forEach(function (p) {
+    var used = totals[p.name] || 0;
+    var remaining = p.budget - used;
+    var pct = p.budget > 0 ? Math.round((used / p.budget) * 100) : 0;
+    var flag = remaining < 0 ? ' :rotating_light:' : (pct >= 90 ? ' :warning:' : '');
+    lines.push('  ' + padRight_(p.name, 24) + used.toFixed(1) + 'h / ' + p.budget.toFixed(1) + 'h (' + pct + '%)' + flag);
+  });
+
+  return '*Project budgets (all-time)*\n```\n' + lines.join('\n') + '\n```';
 }
 
 function padRight_(str, len) {

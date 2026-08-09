@@ -36,3 +36,11 @@ function getReminderHour_() {
   var v = getProp_('REMINDER_HOUR', false);
   return v ? parseInt(v, 10) : 18;
 }
+
+// Comma-separated allowlist for the dashboard, e.g.
+// "alex@co.com, jamie@co.com, @co.com" -- entries starting with "@" match
+// any address on that domain. Unset/empty means deny everyone (fail closed).
+function getDashboardAllowedEmails_() {
+  var v = getProp_('DASHBOARD_ALLOWED_EMAILS', false);
+  return v ? v.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
+}
