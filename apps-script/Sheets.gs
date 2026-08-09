@@ -1,20 +1,24 @@
 /**
  * All Google Sheets read/write logic. Sheet tabs:
  *
- * Projects     | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate
+ * Projects     | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted
  * TimeEntries  | Timestamp | Date | SlackUserID | SlackUserName | Project | Hours | Note
  * Users        | SlackUserID | SlackUserName | IncludeInReminders
  *
  * Projects and Users are edited by a human admin (Active / IncludeInReminders
- * columns). BudgetHours, StartDate and EndDate are all optional. TimeEntries
- * is append-only, written by the bot. A MonthlyTally tab (created once,
- * manually) reads TimeEntries via QUERY formulas -- see docs/SHEET_SCHEMA.md.
+ * columns). BudgetHours, StartDate and EndDate are all optional.
+ * DeadlineAlerted is written by the bot (Triggers.gs) once it has posted a
+ * past-deadline warning for that project, so it only fires once -- clear it
+ * back to FALSE to allow another alert (e.g. after pushing EndDate out and
+ * it passes again). TimeEntries is append-only, written by the bot. A
+ * MonthlyTally tab (created once, manually) reads TimeEntries via QUERY
+ * formulas -- see docs/SHEET_SCHEMA.md.
  */
 
 var PROJECTS_SHEET = 'Projects';
 var TIME_ENTRIES_SHEET = 'TimeEntries';
 var USERS_SHEET = 'Users';
-var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate'];
+var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate', 'DeadlineAlerted'];
 
 function getSpreadsheet_() {
   return SpreadsheetApp.openById(getSpreadsheetId_());
@@ -32,13 +36,16 @@ function getOrCreateSheet_(name, headers) {
 }
 
 // Returns every row in Projects as { name, channel, active, budget,
-// startDate, endDate }. `active` folds together the manual Active checkbox
-// AND the StartDate/EndDate window: a project with Active=TRUE but a
-// StartDate in the future, or an EndDate that's passed, comes back
+// startDate, endDate, overdue }. `active` folds together the manual Active
+// checkbox AND the StartDate/EndDate window: a project with Active=TRUE but
+// a StartDate in the future, or an EndDate that's passed, comes back
 // active:false -- so a project auto-retires on its EndDate without anyone
-// having to remember to flip the checkbox. startDate/endDate are Date
-// objects or null. budget is a Number, or null if BudgetHours is blank
-// (uncapped).
+// having to remember to flip the checkbox. `overdue` is true once EndDate
+// has passed, independent of `active`, so callers can flag it even though
+// it's no longer showing in the daily modal. startDate/endDate are Date
+// objects or null (EndDate is optional -- leave it blank for an ongoing
+// project with no deadline). budget is a Number, or null if BudgetHours is
+// blank (uncapped).
 function getAllProjects_() {
   var sheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
   var rows = sheet.getDataRange().getValues();
@@ -51,7 +58,8 @@ function getAllProjects_() {
     var budgetRaw = rows[i][3];
     var startDate = parseSheetDate_(rows[i][4]);
     var endDate = parseSheetDate_(rows[i][5]);
-    var withinWindow = (!startDate || today >= startDate) && (!endDate || today <= endOfDay_(endDate));
+    var overdue = !!endDate && today > endOfDay_(endDate);
+    var withinWindow = (!startDate || today >= startDate) && !overdue;
 
     projects.push({
       name: name,
@@ -59,7 +67,8 @@ function getAllProjects_() {
       active: (activeFlag === true || String(activeFlag).toUpperCase() === 'TRUE') && withinWindow,
       budget: (budgetRaw === '' || budgetRaw === null || budgetRaw === undefined) ? null : Number(budgetRaw),
       startDate: startDate,
-      endDate: endDate
+      endDate: endDate,
+      overdue: overdue
     });
   }
   return projects;

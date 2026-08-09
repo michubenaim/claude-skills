@@ -90,34 +90,49 @@ function buildReminderBlocks_() {
 // Formats { userName: { project: hours } } as a Slack-friendly monospace
 // table, plus per-project totals, for /hours-report and the monthly post.
 function formatTallyMessage_(monthStr, tally) {
-  var userNames = Object.keys(tally).sort();
-  if (userNames.length === 0) {
-    return 'No hours logged for ' + monthStr + ' yet.';
+  return formatGroupedHoursMessage_('Hours tally for ' + monthStr, tally, 'No hours logged for ' + monthStr + ' yet.', 'Per-project totals:');
+}
+
+// Same shape as formatTallyMessage_ but grouped the other way around --
+// { projectName: { userName: hours } } (pass transposeTally_(tally)) -- so
+// you can read "for this project, who spent how long" instead of
+// "for this person, which projects". Used by /hours-report for
+// productivity-by-project.
+function formatProjectBreakdownMessage_(monthStr, projectTally) {
+  return formatGroupedHoursMessage_('Hours by project for ' + monthStr, projectTally, '', 'Per-person totals:');
+}
+
+// data is { groupKey: { itemKey: hours } }. Renders one block per group
+// (with a Total line), then a subtotal-per-item section at the end.
+function formatGroupedHoursMessage_(title, data, emptyMessage, subtotalHeading) {
+  var groupKeys = Object.keys(data).sort();
+  if (groupKeys.length === 0) {
+    return emptyMessage;
   }
 
-  var projectTotals = {};
+  var itemTotals = {};
   var lines = [];
-  userNames.forEach(function (userName) {
-    var projects = tally[userName];
-    var userTotal = 0;
-    var projectNames = Object.keys(projects).sort();
-    lines.push(userName + ':');
-    projectNames.forEach(function (project) {
-      var hours = projects[project];
-      userTotal += hours;
-      projectTotals[project] = (projectTotals[project] || 0) + hours;
-      lines.push('  ' + padRight_(project, 24) + hours.toFixed(1) + 'h');
+  groupKeys.forEach(function (groupKey) {
+    var items = data[groupKey];
+    var groupTotal = 0;
+    var itemKeys = Object.keys(items).sort();
+    lines.push(groupKey + ':');
+    itemKeys.forEach(function (itemKey) {
+      var hours = items[itemKey];
+      groupTotal += hours;
+      itemTotals[itemKey] = (itemTotals[itemKey] || 0) + hours;
+      lines.push('  ' + padRight_(itemKey, 24) + hours.toFixed(1) + 'h');
     });
-    lines.push('  ' + padRight_('Total', 24) + userTotal.toFixed(1) + 'h');
+    lines.push('  ' + padRight_('Total', 24) + groupTotal.toFixed(1) + 'h');
     lines.push('');
   });
 
-  lines.push('Per-project totals:');
-  Object.keys(projectTotals).sort().forEach(function (project) {
-    lines.push('  ' + padRight_(project, 24) + projectTotals[project].toFixed(1) + 'h');
+  lines.push(subtotalHeading);
+  Object.keys(itemTotals).sort().forEach(function (itemKey) {
+    lines.push('  ' + padRight_(itemKey, 24) + itemTotals[itemKey].toFixed(1) + 'h');
   });
 
-  return '*Hours tally for ' + monthStr + '*\n```\n' + lines.join('\n') + '\n```';
+  return '*' + title + '*\n```\n' + lines.join('\n') + '\n```';
 }
 
 // Formats an all-time budget draw-down summary for projects that have a

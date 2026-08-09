@@ -3,18 +3,22 @@
 ## Tabs (auto-created except `Projects`, which you fill in yourself)
 
 **Projects** (you maintain this)
-| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate |
-|---|---|---|---|---|---|
+| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted |
+|---|---|---|---|---|---|---|
 
-`BudgetHours`, `StartDate`, and `EndDate` are all optional. `BudgetHours`
-left blank means uncapped; when set, it's a lifetime allocation (not
-scoped to a month): the modal shows remaining hours next to the project,
+`BudgetHours`, `StartDate`, and `EndDate` are all optional (leave `EndDate`
+blank for an ongoing project with no deadline). `BudgetHours` left blank
+means uncapped; when set, it's a lifetime allocation (not scoped to a
+month): the modal shows remaining hours next to the project,
 `/hours-report` includes an all-time budget summary, and the bot posts a
 warning to `REPORT_CHANNEL_ID` when a project crosses 90% and 100% used.
 `StartDate`/`EndDate` gate whether a project shows up at all: it only
 appears once `StartDate` arrives and automatically stops appearing after
 `EndDate` passes, on top of the `Active` checkbox (which still works as a
-manual pause independent of the dates).
+manual pause independent of the dates). Once `EndDate` passes, the bot also
+posts a "past deadline" warning to `REPORT_CHANNEL_ID` and sets
+`DeadlineAlerted` to `TRUE` so it only fires once — clear it back to
+`FALSE` (e.g. after pushing `EndDate` out) to allow another alert later.
 
 **Users** (auto-synced from Slack nightly; `IncludeInReminders` is yours to edit)
 | SlackUserID | SlackUserName | IncludeInReminders |
@@ -73,7 +77,14 @@ pivot's config, so you just flip the filter value each month.
 ### Option D: the dashboard
 
 `docs/SETUP.md` step 6 deploys a small read-only web page (project budget
-cards + the current month's person-by-project table) restricted to the
-Google accounts in `DASHBOARD_ALLOWED_EMAILS`. It's live — no month field
-to set, no formulas to maintain — but only shows the current month, not an
+cards, flagged red once past deadline, plus the current month's hours
+broken down both by person and by project) restricted to the Google
+accounts in `DASHBOARD_ALLOWED_EMAILS`. It's live — no month field to set,
+no formulas to maintain — but only shows the current month, not an
 arbitrary past one (use Option A/B/C for historical months).
+
+Both `/hours-report` and the dashboard show hours two ways: grouped by
+person (who worked on what) and grouped by project (who spent time on this
+particular project) — the same underlying `TimeEntries` data, just viewed
+from each angle, so you can track productivity per person or per project
+without maintaining two separate places.

@@ -56,6 +56,9 @@ function handleHoursReportCommand_(params) {
   var tally = computeMonthlyTally_(monthStr);
   var text = formatTallyMessage_(monthStr, tally);
 
+  var projectText = formatProjectBreakdownMessage_(monthStr, transposeTally_(tally));
+  if (projectText) text += '\n\n' + projectText;
+
   var budgetsText = formatBudgetsMessage_(getAllProjects_(), getProjectTotalsAllTime_());
   if (budgetsText) text += '\n\n' + budgetsText;
 

@@ -9,12 +9,18 @@ tally per team member per project — no subscriptions, no hosting bill.
 - Projects are just names you maintain in a Google Sheet, one per Slack
   channel you work in (see `docs/SETUP.md`).
 - `/hours-report [YYYY-MM]` gives an on-demand tally (defaults to the
-  current month); an optional monthly auto-post does the same to a channel
-  on the 1st.
+  current month), broken down both by person and by project, for tracking
+  productivity either way; an optional monthly auto-post does the same to
+  a channel on the 1st.
 - Projects can optionally carry a total hour budget; the modal shows
   remaining balance, and the bot posts a warning at 90% and 100% used.
-- A read-only dashboard (project budget cards + the current month's
-  per-person table), restricted to Google accounts you approve.
+- Projects can optionally carry a start/end date. `EndDate` is left blank
+  for an ongoing project with no deadline; when set, the project
+  auto-retires from the daily modal once it passes, and the bot posts a
+  one-time "past deadline" alert.
+- A read-only dashboard (project budget cards, flagged once past deadline,
+  plus the current month's hours by person and by project), restricted to
+  Google accounts you approve.
 - All data lives in a Google Sheet you own, so a monthly pivot table /
   export is always one click away — see `docs/SHEET_SCHEMA.md`.
 

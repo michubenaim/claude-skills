@@ -1,11 +1,12 @@
 /**
- * Read-only HTML dashboard: project budget draw-down + current-month
- * per-person breakdown. Served by doGet (Code.gs) only on the dashboard
- * deployment (Execute as: User accessing the web app) -- see
- * docs/SETUP.md. Access is gated by DASHBOARD_ALLOWED_EMAILS regardless of
- * which Google account signs in, since "Execute as: User accessing the web
- * app" + "Anyone" access means any Google account can reach doGet, not just
- * people you've approved.
+ * Read-only HTML dashboard: project budget draw-down (with a "past
+ * deadline" flag once EndDate has passed) plus the current month's hours
+ * broken down both by person and by project, for productivity tracking.
+ * Served by doGet (Code.gs) only on the dashboard deployment (Execute as:
+ * User accessing the web app) -- see docs/SETUP.md. Access is gated by
+ * DASHBOARD_ALLOWED_EMAILS regardless of which Google account signs in,
+ * since "Execute as: User accessing the web app" + "Anyone" access means
+ * any Google account can reach doGet, not just people you've approved.
  */
 
 function isDashboardViewerAllowed_(email) {
@@ -36,17 +37,22 @@ function renderDashboard_(email) {
 }
 
 function buildDashboardHtml_(projects, totalsAllTime, monthStr, monthlyTally) {
+  var projectNames = projects.map(function (p) { return p.name; });
+
   var projectCards = projects.map(function (p) {
     var used = totalsAllTime[p.name] || 0;
     var hasBudget = p.budget != null && p.budget > 0;
     var pct = hasBudget ? Math.min(Math.round((used / p.budget) * 100), 999) : null;
     var barColor = pct === null ? '#8a8d91' : pct >= 100 ? '#e01e5a' : pct >= 90 ? '#e8a33d' : '#007a5a';
     var barWidth = pct === null ? 0 : Math.min(pct, 100);
+    var pill = p.overdue ? '<span class="pill overdue">past deadline</span>' :
+      (!p.active ? '<span class="pill">inactive</span>' : '');
+    var dim = !p.active && !p.overdue; // overdue stays full-opacity so it stands out as urgent
     return '' +
-      '<div class="card' + (p.active ? '' : ' inactive') + '">' +
+      '<div class="card' + (dim ? ' inactive' : '') + '">' +
         '<div class="card-head">' +
           '<span class="card-name">' + escapeHtml_(p.name) + '</span>' +
-          (p.active ? '' : '<span class="pill">inactive</span>') +
+          pill +
         '</div>' +
         (hasBudget
           ? '<div class="bar"><div class="bar-fill" style="width:' + barWidth + '%;background:' + barColor + ';"></div></div>' +
@@ -60,31 +66,15 @@ function buildDashboardHtml_(projects, totalsAllTime, monthStr, monthlyTally) {
   }).join('');
 
   var userNames = Object.keys(monthlyTally).sort();
-  var projectNames = projects.map(function (p) { return p.name; });
+  var allProjectNames = projectNames.slice();
   userNames.forEach(function (u) {
     Object.keys(monthlyTally[u]).forEach(function (p) {
-      if (projectNames.indexOf(p) === -1) projectNames.push(p);
+      if (allProjectNames.indexOf(p) === -1) allProjectNames.push(p);
     });
   });
 
-  var tableHead = '<th>Person</th>' + projectNames.map(function (p) {
-    return '<th>' + escapeHtml_(p) + '</th>';
-  }).join('') + '<th>Total</th>';
-
-  var tableRows = userNames.map(function (userName) {
-    var row = monthlyTally[userName];
-    var total = 0;
-    var cells = projectNames.map(function (p) {
-      var hours = row[p] || 0;
-      total += hours;
-      return '<td>' + (hours ? hours.toFixed(1) : '&ndash;') + '</td>';
-    }).join('');
-    return '<tr><td class="person">' + escapeHtml_(userName) + '</td>' + cells + '<td class="total">' + total.toFixed(1) + '</td></tr>';
-  }).join('');
-
-  if (userNames.length === 0) {
-    tableRows = '<tr><td colspan="' + (projectNames.length + 2) + '" class="empty">No hours logged yet this month.</td></tr>';
-  }
+  var byPersonTable = buildMatrixTable_(monthlyTally, userNames, allProjectNames, 'Person', 'No hours logged yet this month.');
+  var byProjectTable = buildMatrixTable_(transposeTally_(monthlyTally), allProjectNames, userNames, 'Project', 'No hours logged yet this month.');
 
   return '<!doctype html><html><head><meta charset="utf-8">' +
     '<style>' + DASHBOARD_CSS_ + '</style></head><body>' +
@@ -93,10 +83,50 @@ function buildDashboardHtml_(projects, totalsAllTime, monthStr, monthlyTally) {
       '<section class="cards">' + (projectCards || '<p class="empty">No projects configured yet.</p>') + '</section>' +
       '<section>' +
         '<h2>' + escapeHtml_(monthStr) + ' by person</h2>' +
-        '<div class="table-wrap"><table><thead><tr>' + tableHead + '</tr></thead><tbody>' + tableRows + '</tbody></table></div>' +
+        byPersonTable +
+      '</section>' +
+      '<section>' +
+        '<h2>' + escapeHtml_(monthStr) + ' by project</h2>' +
+        byProjectTable +
       '</section>' +
     '</main>' +
   '</body></html>';
+}
+
+// data is { rowKey: { colKey: hours } }. Renders rowLabel | col1 | col2 | ... | Total.
+function buildMatrixTable_(data, rowKeys, colKeys, rowLabel, emptyMessage) {
+  var head = '<th>' + escapeHtml_(rowLabel) + '</th>' + colKeys.map(function (c) {
+    return '<th>' + escapeHtml_(c) + '</th>';
+  }).join('') + '<th>Total</th>';
+
+  var rows = rowKeys.map(function (rowKey) {
+    var row = data[rowKey] || {};
+    var total = 0;
+    var cells = colKeys.map(function (colKey) {
+      var hours = row[colKey] || 0;
+      total += hours;
+      return '<td>' + (hours ? hours.toFixed(1) : '&ndash;') + '</td>';
+    }).join('');
+    return '<tr><td class="row-label">' + escapeHtml_(rowKey) + '</td>' + cells + '<td class="total">' + total.toFixed(1) + '</td></tr>';
+  }).join('');
+
+  if (rowKeys.length === 0) {
+    rows = '<tr><td colspan="' + (colKeys.length + 2) + '" class="empty">' + escapeHtml_(emptyMessage) + '</td></tr>';
+  }
+
+  return '<div class="table-wrap"><table><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+// { rowKey: { colKey: value } } -> { colKey: { rowKey: value } }
+function transposeTally_(tally) {
+  var result = {};
+  Object.keys(tally).forEach(function (rowKey) {
+    Object.keys(tally[rowKey]).forEach(function (colKey) {
+      if (!result[colKey]) result[colKey] = {};
+      result[colKey][rowKey] = tally[rowKey][colKey];
+    });
+  });
+  return result;
 }
 
 function formatDateRange_(startDate, endDate) {
@@ -130,6 +160,7 @@ var DASHBOARD_CSS_ = '' +
   '.card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}' +
   '.card-name{font-weight:700;font-size:14px;}' +
   '.pill{font-size:10px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-soft);background:var(--bg);border-radius:3px;padding:2px 6px;}' +
+  '.pill.overdue{color:#e01e5a;background:rgba(224,30,90,0.12);}' +
   '.bar{height:6px;border-radius:3px;background:var(--bg);overflow:hidden;margin-bottom:8px;}' +
   '.bar-fill{height:100%;border-radius:3px;}' +
   '.card-meta{font-size:12.5px;color:var(--text-soft);font-variant-numeric:tabular-nums;}' +
@@ -140,6 +171,6 @@ var DASHBOARD_CSS_ = '' +
   'th:first-child,td:first-child{text-align:left;}' +
   'thead th{background:var(--bg);color:var(--text-soft);font-weight:700;border-bottom:1px solid var(--border);}' +
   'tbody tr+tr td{border-top:1px solid var(--border);}' +
-  '.person{font-weight:600;}' +
+  '.row-label{font-weight:600;}' +
   '.total{font-weight:700;}' +
   '.empty{color:var(--text-soft);padding:16px;text-align:center;}';

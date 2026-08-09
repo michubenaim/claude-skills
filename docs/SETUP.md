@@ -8,25 +8,30 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
 1. Create a new Google Sheet (any name, e.g. "Team Hours").
 2. Note its ID from the URL: `https://docs.google.com/spreadsheets/d/THIS_PART/edit`.
 3. Add a `Projects` tab with header row
-   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate`,
+   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted`,
    then one row per project you want people to log hours against, e.g.:
 
-   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate |
-   |---|---|---|---|---|---|
-   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 |
-   | Internal Tools | #internal-tools | TRUE | | | |
+   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted |
+   |---|---|---|---|---|---|---|
+   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | |
+   | Internal Tools | #internal-tools | TRUE | | | | |
 
    `SlackChannel` is just for your own reference (which channel = which
    project); the bot doesn't read Slack channels automatically in v1.
    `BudgetHours`, `StartDate`, and `EndDate` are all optional — leave any of
-   them blank if they don't apply. `BudgetHours` sets a total hours
-   allocation to track draw-down (the modal shows remaining hours, and the
-   bot posts a warning to `REPORT_CHANNEL_ID` at 90% and 100% used).
+   them blank if they don't apply (an ongoing project with no deadline just
+   leaves `EndDate` blank). `BudgetHours` sets a total hours allocation to
+   track draw-down (the modal shows remaining hours, and the bot posts a
+   warning to `REPORT_CHANNEL_ID` at 90% and 100% used).
    `StartDate`/`EndDate` bound when a project shows up: it only appears in
    the daily modal once `StartDate` has arrived, and automatically stops
    appearing after `EndDate` passes — no need to remember to flip `Active`
    to `FALSE` when a project wraps. `Active` still works as a manual
-   override for pausing a project without touching its dates.
+   override for pausing a project without touching its dates. Once
+   `EndDate` passes, the bot also posts a one-time "past deadline" warning
+   to `REPORT_CHANNEL_ID` and leaves `DeadlineAlerted` set to `TRUE` so it
+   doesn't repeat every day — leave that column blank/`FALSE` yourself, the
+   bot manages it.
 
 The `TimeEntries` and `Users` tabs are created automatically the first time
 the script runs.
@@ -129,15 +134,19 @@ dropdown and click **Run** once (authorize if prompted). This installs:
   "Log hours" button at `REMINDER_HOUR`.
 - A monthly trigger on the 1st that posts the previous month's tally to
   `REPORT_CHANNEL_ID`, if you set one.
+- A daily trigger (every day, including weekends) at 9am that checks every
+  project's `EndDate` and posts a "past deadline" warning to
+  `REPORT_CHANNEL_ID` the first time it finds one that's passed.
 
 ## 9. Try it
 
 In Slack, run `/log-hours` in any channel or DM with the bot. Fill in hours
 for whichever projects you worked on, submit, and check the `TimeEntries`
 tab in the Sheet for the new row. Run `/hours-report` to see the tally for
-the current month, and open the dashboard URL from step 6 (signed into an
-allowed Google account) to see project budget cards and the same month as
-a table.
+the current month broken down both by person and by project, and open the
+dashboard URL from step 6 (signed into an allowed Google account) to see
+the same breakdown plus project budget cards (flagged red once a project's
+`EndDate` has passed).
 
 ## Notes / limits
 
