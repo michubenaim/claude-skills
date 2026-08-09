@@ -3,14 +3,18 @@
 ## Tabs (auto-created except `Projects`, which you fill in yourself)
 
 **Projects** (you maintain this)
-| ProjectName | SlackChannel | Active | BudgetHours |
-|---|---|---|---|
+| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate |
+|---|---|---|---|---|---|
 
-`BudgetHours` is optional — blank means uncapped. When set, it's a
-lifetime allocation (not scoped to a month): the modal shows remaining
-hours next to the project, `/hours-report` includes an all-time budget
-summary, and the bot posts a warning to `REPORT_CHANNEL_ID` when a
-project crosses 90% and 100% used.
+`BudgetHours`, `StartDate`, and `EndDate` are all optional. `BudgetHours`
+left blank means uncapped; when set, it's a lifetime allocation (not
+scoped to a month): the modal shows remaining hours next to the project,
+`/hours-report` includes an all-time budget summary, and the bot posts a
+warning to `REPORT_CHANNEL_ID` when a project crosses 90% and 100% used.
+`StartDate`/`EndDate` gate whether a project shows up at all: it only
+appears once `StartDate` arrives and automatically stops appearing after
+`EndDate` passes, on top of the `Active` checkbox (which still works as a
+manual pause independent of the dates).
 
 **Users** (auto-synced from Slack nightly; `IncludeInReminders` is yours to edit)
 | SlackUserID | SlackUserName | IncludeInReminders |

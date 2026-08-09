@@ -8,21 +8,25 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
 1. Create a new Google Sheet (any name, e.g. "Team Hours").
 2. Note its ID from the URL: `https://docs.google.com/spreadsheets/d/THIS_PART/edit`.
 3. Add a `Projects` tab with header row
-   `ProjectName | SlackChannel | Active | BudgetHours`, then one row per
-   project you want people to log hours against, e.g.:
+   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate`,
+   then one row per project you want people to log hours against, e.g.:
 
-   | ProjectName | SlackChannel | Active | BudgetHours |
-   |---|---|---|---|
-   | Acme Rebrand | #acme-rebrand | TRUE | 120 |
-   | Internal Tools | #internal-tools | TRUE | |
+   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate |
+   |---|---|---|---|---|---|
+   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 |
+   | Internal Tools | #internal-tools | TRUE | | | |
 
    `SlackChannel` is just for your own reference (which channel = which
-   project); the bot doesn't read Slack channels automatically in v1. Set
-   `Active` to `FALSE` to hide a finished project from the daily modal
-   without deleting its history. `BudgetHours` is optional — leave it blank
-   for an uncapped project, or set a total hours allocation to track
-   draw-down (the modal shows remaining hours, and the bot posts a warning
-   to `REPORT_CHANNEL_ID` at 90% and 100% used).
+   project); the bot doesn't read Slack channels automatically in v1.
+   `BudgetHours`, `StartDate`, and `EndDate` are all optional — leave any of
+   them blank if they don't apply. `BudgetHours` sets a total hours
+   allocation to track draw-down (the modal shows remaining hours, and the
+   bot posts a warning to `REPORT_CHANNEL_ID` at 90% and 100% used).
+   `StartDate`/`EndDate` bound when a project shows up: it only appears in
+   the daily modal once `StartDate` has arrived, and automatically stops
+   appearing after `EndDate` passes — no need to remember to flip `Active`
+   to `FALSE` when a project wraps. `Active` still works as a manual
+   override for pausing a project without touching its dates.
 
 The `TimeEntries` and `Users` tabs are created automatically the first time
 the script runs.

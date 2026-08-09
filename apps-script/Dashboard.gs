@@ -53,6 +53,9 @@ function buildDashboardHtml_(projects, totalsAllTime, monthStr, monthlyTally) {
             '<div class="card-meta">' + used.toFixed(1) + 'h / ' + p.budget.toFixed(1) + 'h &middot; ' + pct + '%</div>'
           : '<div class="card-meta">' + used.toFixed(1) + 'h logged &middot; no budget set</div>'
         ) +
+        (formatDateRange_(p.startDate, p.endDate)
+          ? '<div class="card-dates">' + formatDateRange_(p.startDate, p.endDate) + '</div>'
+          : '') +
       '</div>';
   }).join('');
 
@@ -96,6 +99,14 @@ function buildDashboardHtml_(projects, totalsAllTime, monthStr, monthlyTally) {
   '</body></html>';
 }
 
+function formatDateRange_(startDate, endDate) {
+  if (!startDate && !endDate) return '';
+  var fmt = function (d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'MMM d, yyyy'); };
+  if (startDate && endDate) return fmt(startDate) + ' – ' + fmt(endDate);
+  if (startDate) return 'Starts ' + fmt(startDate);
+  return 'Ends ' + fmt(endDate);
+}
+
 function escapeHtml_(str) {
   return String(str == null ? '' : str)
     .replace(/&/g, '&amp;')
@@ -122,6 +133,7 @@ var DASHBOARD_CSS_ = '' +
   '.bar{height:6px;border-radius:3px;background:var(--bg);overflow:hidden;margin-bottom:8px;}' +
   '.bar-fill{height:100%;border-radius:3px;}' +
   '.card-meta{font-size:12.5px;color:var(--text-soft);font-variant-numeric:tabular-nums;}' +
+  '.card-dates{font-size:11.5px;color:var(--text-soft);margin-top:6px;}' +
   '.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;}' +
   'table{border-collapse:collapse;width:100%;font-size:13px;}' +
   'th,td{padding:8px 12px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}' +

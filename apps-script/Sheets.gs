@@ -1,21 +1,20 @@
 /**
  * All Google Sheets read/write logic. Sheet tabs:
  *
- * Projects     | ProjectName | SlackChannel | Active | BudgetHours
+ * Projects     | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate
  * TimeEntries  | Timestamp | Date | SlackUserID | SlackUserName | Project | Hours | Note
  * Users        | SlackUserID | SlackUserName | IncludeInReminders
  *
  * Projects and Users are edited by a human admin (Active / IncludeInReminders
- * columns). BudgetHours is optional -- leave it blank for an uncapped
- * project. TimeEntries is append-only, written by the bot. A MonthlyTally
- * tab (created once, manually) reads TimeEntries via QUERY formulas -- see
- * docs/SHEET_SCHEMA.md.
+ * columns). BudgetHours, StartDate and EndDate are all optional. TimeEntries
+ * is append-only, written by the bot. A MonthlyTally tab (created once,
+ * manually) reads TimeEntries via QUERY formulas -- see docs/SHEET_SCHEMA.md.
  */
 
 var PROJECTS_SHEET = 'Projects';
 var TIME_ENTRIES_SHEET = 'TimeEntries';
 var USERS_SHEET = 'Users';
-var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours'];
+var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate'];
 
 function getSpreadsheet_() {
   return SpreadsheetApp.openById(getSpreadsheetId_());
@@ -32,23 +31,35 @@ function getOrCreateSheet_(name, headers) {
   return sheet;
 }
 
-// Returns every row in Projects (active or not) as
-// { name, channel, active, budget } -- budget is a Number, or null if the
-// BudgetHours cell is blank (meaning uncapped).
+// Returns every row in Projects as { name, channel, active, budget,
+// startDate, endDate }. `active` folds together the manual Active checkbox
+// AND the StartDate/EndDate window: a project with Active=TRUE but a
+// StartDate in the future, or an EndDate that's passed, comes back
+// active:false -- so a project auto-retires on its EndDate without anyone
+// having to remember to flip the checkbox. startDate/endDate are Date
+// objects or null. budget is a Number, or null if BudgetHours is blank
+// (uncapped).
 function getAllProjects_() {
   var sheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
   var rows = sheet.getDataRange().getValues();
+  var today = new Date();
   var projects = [];
   for (var i = 1; i < rows.length; i++) {
     var name = rows[i][0];
     if (!name) continue;
-    var active = rows[i][2];
+    var activeFlag = rows[i][2];
     var budgetRaw = rows[i][3];
+    var startDate = parseSheetDate_(rows[i][4]);
+    var endDate = parseSheetDate_(rows[i][5]);
+    var withinWindow = (!startDate || today >= startDate) && (!endDate || today <= endOfDay_(endDate));
+
     projects.push({
       name: name,
       channel: rows[i][1],
-      active: active === true || String(active).toUpperCase() === 'TRUE',
-      budget: (budgetRaw === '' || budgetRaw === null || budgetRaw === undefined) ? null : Number(budgetRaw)
+      active: (activeFlag === true || String(activeFlag).toUpperCase() === 'TRUE') && withinWindow,
+      budget: (budgetRaw === '' || budgetRaw === null || budgetRaw === undefined) ? null : Number(budgetRaw),
+      startDate: startDate,
+      endDate: endDate
     });
   }
   return projects;
@@ -56,6 +67,19 @@ function getAllProjects_() {
 
 function getActiveProjects_() {
   return getAllProjects_().filter(function (p) { return p.active; });
+}
+
+function parseSheetDate_(value) {
+  if (!value || value === '') return null;
+  if (Object.prototype.toString.call(value) === '[object Date]') return value;
+  var parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function endOfDay_(date) {
+  var d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
 }
 
 function appendTimeEntries_(userId, userName, dateStr, projectHours, note) {
