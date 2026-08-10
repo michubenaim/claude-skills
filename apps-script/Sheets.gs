@@ -198,19 +198,50 @@ function getProjectTotalsAllTime_() {
 // compute a project's budget balance as of the start of a given month
 // (budget - this), separate from what gets logged during the month itself.
 function getProjectUsedBeforeMonth_(monthStr) {
+  return getProjectTotalsBeforeDate_(monthStr + '-01');
+}
+
+// Returns { projectName: hoursLoggedStrictlyBeforeCutoffDate }, cutoffDateStr
+// exclusive. General-purpose version of getProjectUsedBeforeMonth_, used by
+// the dashboard's burn-down chart to establish each project's running total
+// as of an arbitrary range start.
+function getProjectTotalsBeforeDate_(cutoffDateStr) {
   var sheet = getOrCreateSheet_(TIME_ENTRIES_SHEET,
     ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note']);
   var rows = sheet.getDataRange().getValues();
-  var cutoff = monthStr + '-01';
   var totals = {};
   for (var i = 1; i < rows.length; i++) {
     var dateStr = formatDate_(rows[i][1]);
-    if (dateStr >= cutoff) continue;
+    if (dateStr >= cutoffDateStr) continue;
     var project = rows[i][4];
     var hours = Number(rows[i][5]) || 0;
     totals[project] = (totals[project] || 0) + hours;
   }
   return totals;
+}
+
+// Returns every TimeEntries row whose Date falls within [startDateStr,
+// endDateStr] (inclusive) as { date, userId, userName, project, hours, note }
+// objects -- the single source the dashboard's range-based views all derive
+// from (see Analytics.gs).
+function getEntriesInRange_(startDateStr, endDateStr) {
+  var sheet = getOrCreateSheet_(TIME_ENTRIES_SHEET,
+    ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note']);
+  var rows = sheet.getDataRange().getValues();
+  var entries = [];
+  for (var i = 1; i < rows.length; i++) {
+    var dateStr = formatDate_(rows[i][1]);
+    if (dateStr < startDateStr || dateStr > endDateStr) continue;
+    entries.push({
+      date: dateStr,
+      userId: rows[i][2],
+      userName: rows[i][3],
+      project: rows[i][4],
+      hours: Number(rows[i][5]) || 0,
+      note: rows[i][6] || ''
+    });
+  }
+  return entries;
 }
 
 // Every person who's either in the Users roster or has ever logged an

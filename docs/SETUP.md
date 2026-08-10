@@ -148,9 +148,10 @@ In Slack, run `/log-hours` in any channel or DM with the bot. Fill in hours
 (and an optional note) for whichever projects you worked on, submit, and
 check the `TimeEntries` tab in the Sheet for the new row(s). Run
 `/hours-report` to see the report for the current month, and open the
-dashboard URL from step 6 (signed into an allowed Google account) to see
-project budget cards (flagged red once a project's `EndDate` has passed)
-plus the month's hours by person and by project.
+dashboard URL from step 6 (signed into an allowed Google account) to
+explore it — toggle between week/month/quarter/year/custom, and try the
+**Export to Sheet** button (writes the current range's raw entries to an
+`Export` tab in the same Spreadsheet).
 
 ## Notes / limits
 
@@ -171,3 +172,17 @@ plus the month's hours by person and by project.
 - Budget warnings only fire once per threshold crossing (90%, then 100%),
   computed from the before/after totals of each submission — so they won't
   spam the channel on every subsequent entry once a project is already over.
+- The dashboard's "who's spending time where" view shows each person's
+  hours and % share of a project's time, not a true actual-vs-estimate
+  efficiency score — the sheet only tracks a project-level budget, not
+  per-task estimates, so there's nothing to compare individual speed
+  against. Share of hours is a reasonable proxy without adding a field to
+  the daily modal; if you want the real thing later, that means adding a
+  lightweight Tasks concept (task name + estimate) people pick when
+  logging hours.
+- If a Workspace member gets stuck in a loop on the dashboard's Google
+  sign-in screen (approves access, then gets sent right back to the start),
+  it's almost always your Workspace's **Security > API Controls > App
+  Access Control** policy blocking unverified internal apps for non-admin
+  users. A Workspace super admin needs to find the app there (it may only
+  appear after someone has attempted access) and mark it **Trusted**.

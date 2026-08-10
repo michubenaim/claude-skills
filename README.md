@@ -22,9 +22,12 @@ tally per team member per project — no subscriptions, no hosting bill.
   for an ongoing project with no deadline; when set, the project
   auto-retires from the daily modal once it passes, and the bot posts a
   one-time "past deadline" alert.
-- A read-only dashboard (project budget cards, flagged once past deadline,
-  plus the current month's hours by person and by project), restricted to
-  Google accounts you approve.
+- An interactive dashboard, restricted to Google accounts you approve:
+  a week/month/quarter/year/custom-range toggle drives project status
+  badges (on track / at risk / over budget / late), a "where hours are
+  going" chart, a per-project burn-down chart against budget, by-project
+  and by-person tables, a per-project person-share breakdown, and an
+  Export-to-Sheet button.
 - All data lives in a Google Sheet you own, so a monthly pivot table /
   export is always one click away — see `docs/SHEET_SCHEMA.md`.
 
@@ -61,9 +64,10 @@ apps-script/
   SlackApi.gs    Slack Web API calls + inbound request auth
   Sheets.gs      Google Sheets read/write helpers
   Modals.gs      Slack Block Kit view/message builders
-  Triggers.gs    Evening reminder + monthly tally scheduled functions
+  Triggers.gs    Evening reminder, missed-entry nudge, deadline check, monthly tally
   Budgets.gs     Project budget threshold-crossing warnings
-  Dashboard.gs   Read-only HTML dashboard (project budgets + monthly table)
+  Analytics.gs   Timeframe resolution, tallies, project status classification
+  Dashboard.gs   Interactive HTML dashboard (charts, tables, Sheet export)
   appsscript.json
 docs/
   SETUP.md               step-by-step setup

@@ -101,16 +101,39 @@ then `Project`. Values: `Hours` (SUM). Filters: `Date`, condition "text
 contains" your target month string (e.g. `2026-08`). Sheets remembers this
 pivot's config, so you just flip the filter value each month.
 
-### Option D: the dashboard
+### Option D: the dashboard (most useful for actually analyzing the data)
 
-`docs/SETUP.md` step 6 deploys a small read-only web page (project budget
-cards, flagged red once past deadline, plus the current month's hours
-broken down both by person and by project) restricted to the Google
-accounts in `DASHBOARD_ALLOWED_EMAILS`. It's live — no month field to set,
-no formulas to maintain — but only shows the current month, not an
-arbitrary past one (use Option A/B/C for historical months).
+`docs/SETUP.md` step 6 deploys an interactive web page, restricted to the
+Google accounts in `DASHBOARD_ALLOWED_EMAILS`. Unlike the other three
+options it isn't locked to "the current month" — a toggle bar switches
+between **week to date** (default), **this month**, **this quarter**,
+**this year**, or a **custom** start/end range, and everything below
+re-fetches for whichever window is selected:
 
-`/hours-report` is project-first (for budget draw-down and "who's behind on
-logging"); the dashboard additionally shows the same month's hours grouped
-by person instead, for a per-person view of the same underlying
-`TimeEntries` data.
+- **Project status cards** — for each project, two independent badges:
+  a budget status (*On track* / *At risk* / *Over budget* / *Uncapped*) and
+  a schedule status (*On schedule* / *Late* / *No deadline*), plus the
+  all-time budget bar and hours logged in the selected range. "At risk"
+  means the project is burning budget faster than its `StartDate`/`EndDate`
+  window justifies (or, with no dates set, is at/above 90% used) — see the
+  `ANALYTICS_AT_RISK_MARGIN_` comment in `Analytics.gs` if you want to
+  tune that threshold.
+- **"Where hours are going"** — a bar chart ranking projects by hours
+  logged in the selected range.
+- **Burn-down chart** — pick a project from the dropdown to see its
+  cumulative all-time hours plotted day by day across the range, with a
+  dashed reference line at its budget if one is set.
+- **By project / by person tables** — the same data both ways, scoped to
+  the selected range.
+- **Who's spending time where** — per project, each person's hours and %
+  share of that project's time in the range (the chosen proxy for
+  "who's working where," since there's no per-task time estimate to
+  compare against — see the note in `docs/SETUP.md`).
+- **Export to Sheet** — writes the selected range's raw entries (date,
+  person, project, hours, note) into an `Export` tab in the same
+  Spreadsheet, overwriting it each time. That tab is a normal Sheet, so
+  from there **File > Download** gives you XLSX/CSV/PDF.
+
+`/hours-report` stays the fast, Slack-native, project-first summary; the
+dashboard is where you go to actually dig into trends and status across
+whatever window you're asking about.
