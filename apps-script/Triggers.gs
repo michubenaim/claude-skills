@@ -4,7 +4,7 @@
  * docs/SETUP.md step 8.
  */
 
-var TRIGGER_FUNCTIONS_ = ['sendEveningReminders', 'postMonthlyTally', 'checkProjectDeadlines'];
+var TRIGGER_FUNCTIONS_ = ['sendEveningReminders', 'postMonthlyTally', 'checkProjectDeadlines', 'checkMissingEntries'];
 
 function installTriggers_() {
   removeTriggers_();
@@ -27,6 +27,14 @@ function installTriggers_() {
     .atHour(9)
     .nearMinute(0)
     .create();
+  // Weekdays only -- nudges anyone who didn't log hours for the last
+  // business day (Friday's, if today is Monday).
+  ScriptApp.newTrigger('checkMissingEntries')
+    .timeBased()
+    .everyDays(1)
+    .atHour(9)
+    .nearMinute(15)
+    .create();
 }
 
 function removeTriggers_() {
@@ -43,14 +51,50 @@ function sendEveningReminders() {
 
   syncUsersSheet_(slackListUsers_());
   var recipients = getReminderRecipients_();
-  var blocks = buildReminderBlocks_();
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var text = "Time to log today's hours!";
+  var blocks = buildReminderBlocks_(today, ':clock8: ' + text);
 
   recipients.forEach(function (userId) {
     var dm = slackOpenDm_(userId);
     if (dm.ok) {
-      slackPostMessage_(dm.channel.id, "Time to log today's hours!", blocks);
+      slackPostMessage_(dm.channel.id, text, blocks);
     }
   });
+}
+
+// Weekdays only. Finds the last business day (Friday, if today is Monday)
+// and DMs anyone in the reminder roster who has zero TimeEntries rows for
+// that date -- the button opens the modal pre-targeted at that missed day
+// (via buildReminderBlocks_'s dateStr), so they can backfill it directly
+// rather than only ever being able to log "today".
+function checkMissingEntries() {
+  var day = new Date().getDay();
+  if (day === 0 || day === 6) return; // skip weekends
+
+  var targetDate = lastBusinessDateStr_(new Date());
+  var loggedUserIds = getUserIdsWithEntriesOnDate_(targetDate);
+  var recipients = getReminderRecipients_();
+  var text = "You didn't log hours for " + targetDate + " -- want to add them now?";
+  var blocks = buildReminderBlocks_(targetDate, ':wave: ' + text);
+
+  recipients.forEach(function (userId) {
+    if (loggedUserIds[userId]) return;
+    var dm = slackOpenDm_(userId);
+    if (dm.ok) {
+      slackPostMessage_(dm.channel.id, text, blocks);
+    }
+  });
+}
+
+// The most recent weekday strictly before `date` -- Monday maps back to
+// the prior Friday, every other weekday just maps back one day.
+function lastBusinessDateStr_(date) {
+  var d = new Date(date);
+  var day = d.getDay();
+  var daysBack = day === 1 ? 3 : (day === 0 ? 2 : 1);
+  d.setDate(d.getDate() - daysBack);
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
 // Runs on the 1st of the month; reports on the month that just ended.

@@ -137,16 +137,20 @@ dropdown and click **Run** once (authorize if prompted). This installs:
 - A daily trigger (every day, including weekends) at 9am that checks every
   project's `EndDate` and posts a "past deadline" warning to
   `REPORT_CHANNEL_ID` the first time it finds one that's passed.
+- A daily trigger (weekdays only) at 9:15am that DMs anyone who has zero
+  hours logged for the last business day (Friday's, if today is Monday) --
+  the button opens the modal pre-set to that missed date so they can
+  backfill it directly.
 
 ## 9. Try it
 
 In Slack, run `/log-hours` in any channel or DM with the bot. Fill in hours
-for whichever projects you worked on, submit, and check the `TimeEntries`
-tab in the Sheet for the new row. Run `/hours-report` to see the tally for
-the current month broken down both by person and by project, and open the
+(and an optional note) for whichever projects you worked on, submit, and
+check the `TimeEntries` tab in the Sheet for the new row(s). Run
+`/hours-report` to see the report for the current month, and open the
 dashboard URL from step 6 (signed into an allowed Google account) to see
-the same breakdown plus project budget cards (flagged red once a project's
-`EndDate` has passed).
+project budget cards (flagged red once a project's `EndDate` has passed)
+plus the month's hours by person and by project.
 
 ## Notes / limits
 

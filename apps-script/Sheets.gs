@@ -91,7 +91,10 @@ function endOfDay_(date) {
   return d;
 }
 
-function appendTimeEntries_(userId, userName, dateStr, projectHours, note) {
+// projectNotes is { projectName: noteText }, one note per project (not one
+// shared note for the whole submission) -- a note only gets attached to a
+// project's row if that project actually has nonzero hours this submission.
+function appendTimeEntries_(userId, userName, dateStr, projectHours, projectNotes) {
   var sheet = getOrCreateSheet_(TIME_ENTRIES_SHEET,
     ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note']);
   var now = new Date();
@@ -99,7 +102,7 @@ function appendTimeEntries_(userId, userName, dateStr, projectHours, note) {
   Object.keys(projectHours).forEach(function (project) {
     var hours = projectHours[project];
     if (hours > 0) {
-      rows.push([now, dateStr, userId, userName, project, hours, note || '']);
+      rows.push([now, dateStr, userId, userName, project, hours, (projectNotes && projectNotes[project]) || '']);
     }
   });
   if (rows.length > 0) {
@@ -141,6 +144,20 @@ function getReminderRecipients_() {
     }
   }
   return recipients;
+}
+
+// Returns { slackUserId: true } for everyone who logged at least one
+// TimeEntries row on the given date -- used by the 9am missed-entry check
+// (Triggers.gs) to find who to leave alone vs. who to nudge.
+function getUserIdsWithEntriesOnDate_(dateStr) {
+  var sheet = getOrCreateSheet_(TIME_ENTRIES_SHEET,
+    ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note']);
+  var rows = sheet.getDataRange().getValues();
+  var ids = {};
+  for (var i = 1; i < rows.length; i++) {
+    if (formatDate_(rows[i][1]) === dateStr) ids[rows[i][2]] = true;
+  }
+  return ids;
 }
 
 // Returns { userName: { projectName: totalHours, ... }, ... } for entries

@@ -48,14 +48,16 @@ function buildLogHoursModal_(projects, dateStr, totals) {
         action_id: 'hours'
       }
     });
-  });
-
-  blocks.push({
-    type: 'input',
-    block_id: 'note',
-    optional: true,
-    label: { type: 'plain_text', text: 'Note (optional)' },
-    element: { type: 'plain_text_input', action_id: 'value', multiline: true }
+    // Note is per-project, not one shared note for the whole submission --
+    // it only gets used (and only shows up in that project's TimeEntries
+    // row) if hours were actually entered for this project.
+    blocks.push({
+      type: 'input',
+      block_id: 'project_' + i + '_note',
+      optional: true,
+      label: { type: 'plain_text', text: 'Note for ' + project.name + ' (optional)' },
+      element: { type: 'plain_text_input', action_id: 'value' }
+    });
   });
 
   return {
@@ -69,11 +71,16 @@ function buildLogHoursModal_(projects, dateStr, totals) {
   };
 }
 
-function buildReminderBlocks_() {
+// dateStr is embedded as the button's `value` so handleInteractivity_ knows
+// which date to open the modal for -- the evening reminder passes today's
+// date, the missed-entry nudge (Triggers.gs) passes the date that was
+// skipped, so clicking either always opens the modal pre-targeted at the
+// right day instead of always defaulting to "today".
+function buildReminderBlocks_(dateStr, text) {
   return [
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: ':clock8: Time to log today\'s hours!' }
+      text: { type: 'mrkdwn', text: text }
     },
     {
       type: 'actions',
@@ -81,7 +88,8 @@ function buildReminderBlocks_() {
         type: 'button',
         text: { type: 'plain_text', text: 'Log hours' },
         action_id: 'open_log_hours_modal',
-        style: 'primary'
+        style: 'primary',
+        value: dateStr
       }]
     }
   ];

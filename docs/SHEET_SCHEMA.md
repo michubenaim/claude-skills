@@ -30,8 +30,11 @@ posts a "past deadline" warning to `REPORT_CHANNEL_ID` and sets
 |---|---|---|---|---|---|---|
 
 `Date` is stored as a `YYYY-MM-DD` string (the day the entry is for, not
-necessarily the submission day). One row per project with nonzero hours per
-submission, so a single evening's entry can produce multiple rows.
+necessarily the submission day -- the 9am missed-entry nudge lets someone
+backfill a prior day). One row per project with nonzero hours per
+submission, so a single evening's entry can produce multiple rows. `Note`
+is per-project (the modal has a separate optional note field under each
+project's hours field), not one shared note for the whole submission.
 
 ## Getting the monthly tally
 

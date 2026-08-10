@@ -64,8 +64,11 @@ function handleInteractivity_(payload) {
     if (action && action.action_id === 'open_log_hours_modal') {
       var projects = getActiveProjects_();
       var totals = getProjectTotalsAllTime_();
-      var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      slackOpenView_(payload.trigger_id, buildLogHoursModal_(projects, today, totals));
+      // The reminder button carries the date it's for (today for the
+      // evening ping, the skipped day for the missed-entry nudge); fall
+      // back to today if it's missing (e.g. a button from before this).
+      var targetDate = action.value || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      slackOpenView_(payload.trigger_id, buildLogHoursModal_(projects, targetDate, totals));
     }
     return ContentService.createTextOutput('');
   }
@@ -74,14 +77,16 @@ function handleInteractivity_(payload) {
     var metadata = JSON.parse(payload.view.private_metadata);
     var values = payload.view.state.values;
     var projectHours = {};
+    var projectNotes = {};
     metadata.projects.forEach(function (project, i) {
       var raw = values['project_' + i] && values['project_' + i].hours && values['project_' + i].hours.value;
       projectHours[project] = raw ? Number(raw) : 0;
+      var noteRaw = values['project_' + i + '_note'] && values['project_' + i + '_note'].value && values['project_' + i + '_note'].value.value;
+      projectNotes[project] = noteRaw || '';
     });
-    var note = values.note && values.note.value && values.note.value.value;
 
     var totalsBefore = getProjectTotalsAllTime_();
-    appendTimeEntries_(payload.user.id, payload.user.name || payload.user.username, metadata.date, projectHours, note);
+    appendTimeEntries_(payload.user.id, payload.user.name || payload.user.username, metadata.date, projectHours, projectNotes);
 
     var projectsByName = {};
     getAllProjects_().forEach(function (p) { projectsByName[p.name] = p; });

@@ -4,8 +4,11 @@ A free Slack bot for logging daily hours per project and getting a monthly
 tally per team member per project — no subscriptions, no hosting bill.
 
 - Every evening (weekdays), the bot DMs each team member a **Log hours**
-  button. It opens a modal listing your active projects; fill in hours for
-  whichever ones you touched today.
+  button. It opens a modal listing your active projects; fill in hours
+  (and an optional per-project note) for whichever ones you touched today.
+- Every weekday morning at 9:15am, anyone with zero hours logged for the
+  last business day gets a follow-up nudge, with a button that opens the
+  modal pre-set to backfill that missed day specifically.
 - Projects are just names you maintain in a Google Sheet, one per Slack
   channel you work in (see `docs/SETUP.md`).
 - `/hours-report [YYYY-MM]` gives an on-demand report (defaults to the
