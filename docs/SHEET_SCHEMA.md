@@ -9,9 +9,10 @@
 `BudgetHours`, `StartDate`, and `EndDate` are all optional (leave `EndDate`
 blank for an ongoing project with no deadline). `BudgetHours` left blank
 means uncapped; when set, it's a lifetime allocation (not scoped to a
-month): the modal shows remaining hours next to the project,
-`/hours-report` includes an all-time budget summary, and the bot posts a
-warning to `REPORT_CHANNEL_ID` when a project crosses 90% and 100% used.
+month): the modal shows remaining hours next to the project, `/hours-report`
+shows the balance at the start of the queried month and what's left after
+it, and the bot posts a warning to `REPORT_CHANNEL_ID` when a project
+crosses 90% and 100% used.
 `StartDate`/`EndDate` gate whether a project shows up at all: it only
 appears once `StartDate` arrives and automatically stops appearing after
 `EndDate` passes, on top of the `Active` checkbox (which still works as a
@@ -40,8 +41,31 @@ writing any code:
 ### Option A: `/hours-report` in Slack (fastest)
 
 Run `/hours-report` (defaults to the current month) or `/hours-report
-2026-07` for a specific month. Posts a monospace table visible only to you.
-If `REPORT_CHANNEL_ID` is set, the same report auto-posts to that channel on
+2026-07` for a specific month. Posts one block per project, visible only to
+you:
+
+```
+ASF-Field-Day:
+  Month start     51.0h
+  Alex             6.0h
+  Lope             1.0h
+  Michu            0.0h
+  Remaining       44.0h
+
+VAC-Exhibition:
+  Month start     50.0h
+  Alex            20.0h
+  Lope            32.0h
+  Michu            0.0h
+  Remaining       -2.0h
+```
+
+"Month start" is the project's `BudgetHours` minus everything logged before
+the 1st of that month; "Remaining" subtracts that month's hours too. Every
+known team member gets a row, including 0 — so it also surfaces who hasn't
+logged anything on a project. Projects with no `BudgetHours` set skip the
+"Month start"/"Remaining" lines and show a plain "Total" instead. If
+`REPORT_CHANNEL_ID` is set, the same report auto-posts to that channel on
 the 1st of each month for the month that just ended.
 
 ### Option B: a live "MonthlyTally" tab in the Sheet
@@ -83,8 +107,7 @@ accounts in `DASHBOARD_ALLOWED_EMAILS`. It's live — no month field to set,
 no formulas to maintain — but only shows the current month, not an
 arbitrary past one (use Option A/B/C for historical months).
 
-Both `/hours-report` and the dashboard show hours two ways: grouped by
-person (who worked on what) and grouped by project (who spent time on this
-particular project) — the same underlying `TimeEntries` data, just viewed
-from each angle, so you can track productivity per person or per project
-without maintaining two separate places.
+`/hours-report` is project-first (for budget draw-down and "who's behind on
+logging"); the dashboard additionally shows the same month's hours grouped
+by person instead, for a per-person view of the same underlying
+`TimeEntries` data.

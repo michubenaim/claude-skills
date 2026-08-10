@@ -87,71 +87,51 @@ function buildReminderBlocks_() {
   ];
 }
 
-// Formats { userName: { project: hours } } as a Slack-friendly monospace
-// table, plus per-project totals, for /hours-report and the monthly post.
-function formatTallyMessage_(monthStr, tally) {
-  return formatGroupedHoursMessage_('Hours tally for ' + monthStr, tally, 'No hours logged for ' + monthStr + ' yet.', 'Per-project totals:');
-}
+// Formats one block per project: budget balance at the start of the month
+// (if the project has a BudgetHours set), then every roster member's hours
+// for that project this month (0 if they didn't log any), then either the
+// remaining balance (budgeted projects) or a plain total (unbudgeted ones).
+//
+// `projects` is [{ name, budget }] (getAllProjects_()); `roster` is every
+// known person's display name (getAllKnownUserNames_()); `byProject` is
+// { projectName: { personName: hoursThisMonth } } (transposeTally_ of
+// computeMonthlyTally_); `usedBeforeMonth` is
+// { projectName: hoursLoggedBeforeThisMonth } (getProjectUsedBeforeMonth_).
+function formatMonthProjectReport_(monthStr, projects, roster, byProject, usedBeforeMonth) {
+  if (projects.length === 0) return 'No projects configured yet.';
 
-// Same shape as formatTallyMessage_ but grouped the other way around --
-// { projectName: { userName: hours } } (pass transposeTally_(tally)) -- so
-// you can read "for this project, who spent how long" instead of
-// "for this person, which projects". Used by /hours-report for
-// productivity-by-project.
-function formatProjectBreakdownMessage_(monthStr, projectTally) {
-  return formatGroupedHoursMessage_('Hours by project for ' + monthStr, projectTally, '', 'Per-person totals:');
-}
+  var blocks = projects.map(function (p) {
+    var people = byProject[p.name] || {};
+    var hasBudget = p.budget != null;
+    var monthStart = hasBudget ? p.budget - (usedBeforeMonth[p.name] || 0) : null;
 
-// data is { groupKey: { itemKey: hours } }. Renders one block per group
-// (with a Total line), then a subtotal-per-item section at the end.
-function formatGroupedHoursMessage_(title, data, emptyMessage, subtotalHeading) {
-  var groupKeys = Object.keys(data).sort();
-  if (groupKeys.length === 0) {
-    return emptyMessage;
-  }
-
-  var itemTotals = {};
-  var lines = [];
-  groupKeys.forEach(function (groupKey) {
-    var items = data[groupKey];
-    var groupTotal = 0;
-    var itemKeys = Object.keys(items).sort();
-    lines.push(groupKey + ':');
-    itemKeys.forEach(function (itemKey) {
-      var hours = items[itemKey];
-      groupTotal += hours;
-      itemTotals[itemKey] = (itemTotals[itemKey] || 0) + hours;
-      lines.push('  ' + padRight_(itemKey, 24) + hours.toFixed(1) + 'h');
+    // Roster plus anyone who logged time on this project but isn't in the
+    // roster yet, so the total below is always accurate.
+    var names = roster.slice();
+    Object.keys(people).forEach(function (name) {
+      if (names.indexOf(name) === -1) names.push(name);
     });
-    lines.push('  ' + padRight_('Total', 24) + groupTotal.toFixed(1) + 'h');
-    lines.push('');
+
+    var lines = [p.name + ':'];
+    if (hasBudget) {
+      lines.push('  ' + padRight_('Month start', 16) + monthStart.toFixed(1) + 'h');
+    }
+
+    var monthTotal = 0;
+    names.forEach(function (name) {
+      var hours = people[name] || 0;
+      monthTotal += hours;
+      lines.push('  ' + padRight_(name, 16) + hours.toFixed(1) + 'h');
+    });
+
+    lines.push('  ' + (hasBudget
+      ? padRight_('Remaining', 16) + (monthStart - monthTotal).toFixed(1) + 'h'
+      : padRight_('Total', 16) + monthTotal.toFixed(1) + 'h'));
+
+    return lines.join('\n');
   });
 
-  lines.push(subtotalHeading);
-  Object.keys(itemTotals).sort().forEach(function (itemKey) {
-    lines.push('  ' + padRight_(itemKey, 24) + itemTotals[itemKey].toFixed(1) + 'h');
-  });
-
-  return '*' + title + '*\n```\n' + lines.join('\n') + '\n```';
-}
-
-// Formats an all-time budget draw-down summary for projects that have a
-// BudgetHours set. `projects` is [{ name, budget }], `totals` is
-// { projectName: hoursLoggedAllTime }.
-function formatBudgetsMessage_(projects, totals) {
-  var budgeted = projects.filter(function (p) { return p.budget != null; });
-  if (budgeted.length === 0) return '';
-
-  var lines = [];
-  budgeted.forEach(function (p) {
-    var used = totals[p.name] || 0;
-    var remaining = p.budget - used;
-    var pct = p.budget > 0 ? Math.round((used / p.budget) * 100) : 0;
-    var flag = remaining < 0 ? ' :rotating_light:' : (pct >= 90 ? ' :warning:' : '');
-    lines.push('  ' + padRight_(p.name, 24) + used.toFixed(1) + 'h / ' + p.budget.toFixed(1) + 'h (' + pct + '%)' + flag);
-  });
-
-  return '*Project budgets (all-time)*\n```\n' + lines.join('\n') + '\n```';
+  return '*Hours report for ' + monthStr + '*\n```\n' + blocks.join('\n\n') + '\n```';
 }
 
 function padRight_(str, len) {

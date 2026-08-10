@@ -177,6 +177,45 @@ function getProjectTotalsAllTime_() {
   return totals;
 }
 
+// Returns { projectName: hoursLoggedStrictlyBeforeThisMonth }. Used to
+// compute a project's budget balance as of the start of a given month
+// (budget - this), separate from what gets logged during the month itself.
+function getProjectUsedBeforeMonth_(monthStr) {
+  var sheet = getOrCreateSheet_(TIME_ENTRIES_SHEET,
+    ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note']);
+  var rows = sheet.getDataRange().getValues();
+  var cutoff = monthStr + '-01';
+  var totals = {};
+  for (var i = 1; i < rows.length; i++) {
+    var dateStr = formatDate_(rows[i][1]);
+    if (dateStr >= cutoff) continue;
+    var project = rows[i][4];
+    var hours = Number(rows[i][5]) || 0;
+    totals[project] = (totals[project] || 0) + hours;
+  }
+  return totals;
+}
+
+// Every person who's either in the Users roster or has ever logged an
+// entry, unioned so nobody who's logged time is missed even if the Users
+// sheet hasn't synced them yet. Used to show "0 hours" rows for people who
+// didn't report on a given project, not just the people who did.
+function getAllKnownUserNames_() {
+  var names = {};
+  var usersSheet = getOrCreateSheet_(USERS_SHEET, ['SlackUserID', 'SlackUserName', 'IncludeInReminders']);
+  var userRows = usersSheet.getDataRange().getValues();
+  for (var i = 1; i < userRows.length; i++) {
+    if (userRows[i][1]) names[userRows[i][1]] = true;
+  }
+  var entriesSheet = getOrCreateSheet_(TIME_ENTRIES_SHEET,
+    ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note']);
+  var entryRows = entriesSheet.getDataRange().getValues();
+  for (var i = 1; i < entryRows.length; i++) {
+    if (entryRows[i][3]) names[entryRows[i][3]] = true;
+  }
+  return Object.keys(names).sort();
+}
+
 function formatDate_(value) {
   if (Object.prototype.toString.call(value) === '[object Date]') {
     return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');

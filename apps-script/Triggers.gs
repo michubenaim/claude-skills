@@ -62,8 +62,8 @@ function postMonthlyTally() {
   lastMonth.setMonth(lastMonth.getMonth() - 1);
   var monthStr = Utilities.formatDate(lastMonth, Session.getScriptTimeZone(), 'yyyy-MM');
 
-  var tally = computeMonthlyTally_(monthStr);
-  var text = formatTallyMessage_(monthStr, tally);
+  var byProject = transposeTally_(computeMonthlyTally_(monthStr));
+  var text = formatMonthProjectReport_(monthStr, getAllProjects_(), getAllKnownUserNames_(), byProject, getProjectUsedBeforeMonth_(monthStr));
   slackPostMessage_(reportChannel, text);
 }
 

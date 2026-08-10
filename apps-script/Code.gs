@@ -53,15 +53,8 @@ function handleLogHoursCommand_(params) {
 
 function handleHoursReportCommand_(params) {
   var monthStr = (params.text || '').trim() || currentMonthStr_();
-  var tally = computeMonthlyTally_(monthStr);
-  var text = formatTallyMessage_(monthStr, tally);
-
-  var projectText = formatProjectBreakdownMessage_(monthStr, transposeTally_(tally));
-  if (projectText) text += '\n\n' + projectText;
-
-  var budgetsText = formatBudgetsMessage_(getAllProjects_(), getProjectTotalsAllTime_());
-  if (budgetsText) text += '\n\n' + budgetsText;
-
+  var byProject = transposeTally_(computeMonthlyTally_(monthStr));
+  var text = formatMonthProjectReport_(monthStr, getAllProjects_(), getAllKnownUserNames_(), byProject, getProjectUsedBeforeMonth_(monthStr));
   return jsonResponse_({ response_type: 'ephemeral', text: text });
 }
 
