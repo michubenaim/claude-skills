@@ -3,8 +3,8 @@
 ## Tabs (auto-created except `Projects`, which you fill in yourself)
 
 **Projects** (you maintain this, except `UsedHours` -- see below)
-| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours |
-|---|---|---|---|---|---|---|---|
+| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived |
+|---|---|---|---|---|---|---|---|---|
 
 `BudgetHours`, `StartDate`, and `EndDate` are all optional (leave `EndDate`
 blank for an ongoing project with no deadline). `BudgetHours` left blank
@@ -29,13 +29,22 @@ Slack only allows ~3 seconds for a response. Don't hand-edit this column;
 if it ever looks wrong (e.g. after manually editing `TimeEntries`), rerun
 `backfillProjectUsedHours_` from the Apps Script editor to resync it.
 
+`Archived` is independent of `Active`: `Active` (plus `StartDate`/`EndDate`)
+governs whether a project shows up in the daily modal; `Archived` governs
+whether it shows up on the dashboard at all (hidden by default, with a
+"Show archived" toggle to bring it back). Toggle either one directly in
+the sheet, or from Slack via `/hours-projects` (restricted to the Slack
+user IDs in `PROJECT_ADMIN_SLACK_IDS`) — that command shows every
+project's current state with **Activate/Deactivate** and **Archive/
+Unarchive** buttons that update in place.
+
 **Users** (auto-synced from Slack nightly; `IncludeInReminders` is yours to edit)
 | SlackUserID | SlackUserName | IncludeInReminders |
 |---|---|---|
 
 **TimeEntries** (append-only, written by the bot on every `/log-hours` submission)
-| Timestamp | Date | SlackUserID | SlackUserName | Project | Hours | Note |
-|---|---|---|---|---|---|---|
+| Timestamp | Date | SlackUserID | SlackUserName | Project | Hours | Note | Categories |
+|---|---|---|---|---|---|---|---|
 
 `Date` is stored as a `YYYY-MM-DD` string (the day the entry is for, not
 necessarily the submission day -- the 9am missed-entry nudge lets someone
@@ -43,6 +52,15 @@ backfill a prior day). One row per project with nonzero hours per
 submission, so a single evening's entry can produce multiple rows. `Note`
 is per-project (the modal has a separate optional note field under each
 project's hours field), not one shared note for the whole submission.
+
+`Categories` is a comma-joined list of activity tags picked from checkboxes
+in the modal (`Research`, `Strat`, `Design`, `Mtgs/Rev (internal)`,
+`Client service`, `Admin`, `Other`) — multiple may be checked for one
+entry, and picking `Other` adds a free-text field whose contents get
+folded in as `Other: <text>`. An entry tagged with several categories
+contributes its full hours to *each* tag when the dashboard tallies "hours
+by category" (not a split fraction) — the idea is "what kinds of work
+happened," not exact time-per-category accounting.
 
 ## Getting the monthly tally
 
@@ -115,8 +133,10 @@ pivot's config, so you just flip the filter value each month.
 Google accounts in `DASHBOARD_ALLOWED_EMAILS`. Unlike the other three
 options it isn't locked to "the current month" — a toggle bar switches
 between **week to date** (default), **this month**, **this quarter**,
-**this year**, or a **custom** start/end range, and everything below
-re-fetches for whichever window is selected:
+**this year**, or a **custom** start/end range, plus filters for **person**,
+**project**, and a **show archived** checkbox (archived projects are
+hidden by default), and everything below re-fetches for whichever
+combination is selected:
 
 - **Project status cards** — for each project, two independent badges:
   a budget status (*On track* / *At risk* / *Over budget* / *Uncapped*) and
@@ -131,17 +151,27 @@ re-fetches for whichever window is selected:
 - **Burn-down chart** — pick a project from the dropdown to see its
   cumulative all-time hours plotted day by day across the range, with a
   dashed reference line at its budget if one is set.
+- **Hours by category** — a bar chart of the activity tags (see
+  `TimeEntries` above) logged in the selected range.
 - **By project / by person tables** — the same data both ways, scoped to
-  the selected range.
+  the selected range and filters.
 - **Who's spending time where** — per project, each person's hours and %
   share of that project's time in the range (the chosen proxy for
   "who's working where," since there's no per-task time estimate to
   compare against — see the note in `docs/SETUP.md`).
-- **Export to Sheet** — writes the selected range's raw entries (date,
-  person, project, hours, note) into an `Export` tab in the same
-  Spreadsheet, overwriting it each time. That tab is a normal Sheet, so
-  from there **File > Download** gives you XLSX/CSV/PDF.
+- **Export to Sheet** — writes the selected range/filters' raw entries (date,
+  person, project, hours, note, categories) into an `Export` tab in the
+  same Spreadsheet, overwriting it each time. That tab is a normal Sheet,
+  so from there **File > Download** gives you XLSX/CSV/PDF.
 
 `/hours-report` stays the fast, Slack-native, project-first summary; the
 dashboard is where you go to actually dig into trends and status across
-whatever window you're asking about.
+whatever window and filters you're asking about.
+
+### Option E: `/hours-projects` in Slack (managing, not reporting)
+
+Not a reporting view, but worth knowing about here: `/hours-projects`
+(restricted to `PROJECT_ADMIN_SLACK_IDS`) lists every project with
+**Activate/Deactivate** and **Archive/Unarchive** buttons, so you don't
+need to open the Sheet to change a project's state. See the `Archived`
+note above.

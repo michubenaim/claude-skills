@@ -72,6 +72,50 @@ function rankProjectsByHours_(entries) {
     .sort(function (a, b) { return b.hours - a.hours; });
 }
 
+// Activity categories ranked by hours, most first. An entry with multiple
+// tags (e.g. "Research, Design") contributes its full hours to EACH tag's
+// total, not a split fraction -- multi-tagging means "did several kinds of
+// work in this stretch," so bucket totals can legitimately exceed the sum
+// of entries. Untagged entries are excluded.
+function rankCategoriesByHours_(entries) {
+  var totals = {};
+  entries.forEach(function (e) {
+    if (!e.categories) return;
+    e.categories.split(',').forEach(function (tag) {
+      tag = tag.trim();
+      if (!tag) return;
+      totals[tag] = (totals[tag] || 0) + e.hours;
+    });
+  });
+  return Object.keys(totals)
+    .map(function (c) { return { category: c, hours: totals[c] }; })
+    .sort(function (a, b) { return b.hours - a.hours; });
+}
+
+// Applies the dashboard's optional person/project filters to a list of
+// getEntriesInRange_ rows.
+function applyEntryFilters_(entries, filters) {
+  if (filters && filters.person) {
+    entries = entries.filter(function (e) { return e.userName === filters.person; });
+  }
+  if (filters && filters.project) {
+    entries = entries.filter(function (e) { return e.project === filters.project; });
+  }
+  return entries;
+}
+
+// Resolves which projects the dashboard should show: a single project if
+// the `project` filter is set (shown regardless of archived state -- an
+// explicit pick always shows), otherwise every project, excluding archived
+// ones unless `includeArchived` is set.
+function resolveDashboardProjects_(filters) {
+  var all = getAllProjects_();
+  if (filters && filters.project) {
+    return all.filter(function (p) { return p.name === filters.project; });
+  }
+  return (filters && filters.includeArchived) ? all : all.filter(function (p) { return !p.archived; });
+}
+
 // { projectName: [{ date, cumulative }, ...] } across every day in the
 // range, for the burn-down chart. `cumulative` is the ALL-TIME running
 // total through that day (baseline-before-range + range-to-date), since

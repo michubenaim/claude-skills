@@ -27,6 +27,23 @@ features:
       description: Show the hours tally for a month (defaults to current month)
       usage_hint: "[YYYY-MM]"
       should_escape: false
+    - command: /hours-projects
+      url: REQUEST_URL_PLACEHOLDER
+      description: Activate, deactivate, or archive projects (admins only)
+      should_escape: false
+    - command: /hours-dashboard
+      url: REQUEST_URL_PLACEHOLDER
+      description: Get a link to the Hours Tracker dashboard
+      should_escape: false
+  shortcuts:
+    - name: Log hours
+      type: global
+      callback_id: log_hours_shortcut
+      description: Log your hours for today
+    - name: Open dashboard
+      type: global
+      callback_id: open_dashboard_shortcut
+      description: Get a link to the Hours Tracker dashboard
 
 oauth_config:
   scopes:

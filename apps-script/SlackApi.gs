@@ -48,6 +48,20 @@ function slackOpenDm_(userId) {
   return callSlackApi_('conversations.open', { users: userId });
 }
 
+// Updates an ephemeral/in-channel message in place via the response_url
+// Slack includes on slash-command and block_actions-from-a-message
+// payloads (not available for modal interactions). Used by /hours-projects
+// so clicking a toggle button updates the same message instead of posting
+// a new one each time.
+function slackRespondToUrl_(responseUrl, payload) {
+  UrlFetchApp.fetch(responseUrl, {
+    method: 'post',
+    contentType: 'application/json; charset=utf-8',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+}
+
 function slackListUsers_() {
   var users = [];
   var cursor = '';

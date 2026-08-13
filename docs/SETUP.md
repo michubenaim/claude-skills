@@ -8,16 +8,17 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
 1. Create a new Google Sheet (any name, e.g. "Team Hours").
 2. Note its ID from the URL: `https://docs.google.com/spreadsheets/d/THIS_PART/edit`.
 3. Add a `Projects` tab with header row
-   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours`,
+   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived`,
    then one row per project you want people to log hours against, e.g.:
 
-   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours |
-   |---|---|---|---|---|---|---|---|
-   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | | |
-   | Internal Tools | #internal-tools | TRUE | | | | | |
+   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived |
+   |---|---|---|---|---|---|---|---|---|
+   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | | | |
+   | Internal Tools | #internal-tools | TRUE | | | | | | |
 
-   Leave `UsedHours` blank — the bot maintains it automatically (see
-   `docs/SHEET_SCHEMA.md`).
+   Leave `UsedHours` and `Archived` blank — the bot maintains/toggles them
+   automatically (`Archived` can also be toggled from Slack via
+   `/hours-projects` — see `docs/SHEET_SCHEMA.md`).
 
    `SlackChannel` is just for your own reference (which channel = which
    project); the bot doesn't read Slack channels automatically in v1.
@@ -44,8 +45,8 @@ the script runs.
 1. In the Sheet: **Extensions > Apps Script**.
 2. Delete the default `Code.gs` stub, then create files matching the ones in
    `apps-script/` in this repo (`Code.gs`, `Config.gs`, `SlackApi.gs`,
-   `Sheets.gs`, `Modals.gs`, `Triggers.gs`, `Budgets.gs`, `Dashboard.gs`) and
-   paste in each file's contents.
+   `Sheets.gs`, `Modals.gs`, `Triggers.gs`, `Budgets.gs`, `Analytics.gs`,
+   `Dashboard.gs`) and paste in each file's contents.
    (If you use [`clasp`](https://github.com/google/clasp) instead, `clasp push`
    from the `apps-script/` folder does this for you.)
 3. Open `appsscript.json` via **Project Settings > Show "appsscript.json"
@@ -77,6 +78,8 @@ the URL itself.
 | `REPORT_CHANNEL_ID` | optional: a channel ID to auto-post the monthly tally + budget warnings into |
 | `REMINDER_HOUR` | optional: hour (0-23) to send the evening reminder, default `18` |
 | `DASHBOARD_ALLOWED_EMAILS` | comma-separated emails/domains allowed to view the dashboard (step 6), e.g. `alex@co.com, @co.com` |
+| `PROJECT_ADMIN_SLACK_IDS` | comma-separated Slack user IDs allowed to run `/hours-projects` (activate/deactivate/archive), e.g. `U04QAL3TN, U08ABCDEF`. Find an ID via that person's Slack profile > "..." menu > Copy member ID. Leave unset to disable the command entirely. |
+| `DASHBOARD_URL` | filled in after step 6 below — the dashboard deployment's own URL, used by `/hours-dashboard` and the "Open dashboard" shortcut |
 
 ## 5. Deploy the Slack web app
 
@@ -111,7 +114,9 @@ update the live URL.
    email against `DASHBOARD_ALLOWED_EMAILS` and shows a plain "not
    authorized" page if it isn't listed).
 3. Deploy, then share this URL (not the Slack one) with whoever should see
-   the dashboard.
+   the dashboard. Also save it as the `DASHBOARD_URL` script property from
+   step 4 — `/hours-dashboard` and the "Open dashboard" shortcut both need
+   it to know where to send people.
 
 ## 7. Create the Slack app
 
@@ -147,14 +152,21 @@ dropdown and click **Run** once (authorize if prompted). This installs:
 
 ## 9. Try it
 
-In Slack, run `/log-hours` in any channel or DM with the bot. Fill in hours
-(and an optional note) for whichever projects you worked on, submit, and
+In Slack, run `/log-hours` in any channel or DM with the bot (or use the
+**Log hours** global shortcut — the ⚡ icon in the message composer, or
+"Shortcuts" in the search bar). Fill in hours, an optional note, and any
+activity categories for whichever projects you worked on, submit, and
 check the `TimeEntries` tab in the Sheet for the new row(s). Run
-`/hours-report` to see the report for the current month, and open the
-dashboard URL from step 6 (signed into an allowed Google account) to
-explore it — toggle between week/month/quarter/year/custom, and try the
-**Export to Sheet** button (writes the current range's raw entries to an
-`Export` tab in the same Spreadsheet).
+`/hours-report` to see the report for the current month.
+
+Run `/hours-dashboard` (or the **Open dashboard** shortcut) to get a link
+button to the dashboard — open it (signed into an allowed Google account)
+and explore: toggle between week/month/quarter/year/custom, filter by
+person or project, try **Export to Sheet**, and check the "Hours by
+category" chart.
+
+If you set `PROJECT_ADMIN_SLACK_IDS`, run `/hours-projects` as one of
+those users to activate/deactivate/archive projects directly from Slack.
 
 ## Notes / limits
 
@@ -189,3 +201,40 @@ explore it — toggle between week/month/quarter/year/custom, and try the
   Access Control** policy blocking unverified internal apps for non-admin
   users. A Workspace super admin needs to find the app there (it may only
   appear after someone has attempted access) and mark it **Trusted**.
+- `Archived` is separate from `Active`: `Active` (plus `StartDate`/
+  `EndDate`) governs whether a project shows up in the daily modal;
+  `Archived` governs whether it shows up on the dashboard at all. A
+  finished project you never want to see again should be archived, not
+  just deactivated — otherwise it keeps appearing (dimmed) on the
+  dashboard's project cards.
+- Category tags (`Research`, `Strat`, `Design`, `Mtgs/Rev (internal)`,
+  `Client service`, `Admin`, `Other`) are edited in `Modals.gs`
+  (`CATEGORY_OPTIONS_`) if you want to rename or add one — there's no
+  Script Property for this since it changes the modal's structure, not
+  just a value.
+
+## Adding these features to an already-set-up installation
+
+If you set this up before `UsedHours`, `Archived`, categories, or the new
+commands existed, catching up takes three steps (no need to redo anything
+from scratch):
+
+1. **Update the code.** Paste the latest contents of every `.gs` file into
+   the Apps Script editor (or `clasp push`), then redeploy both the Slack
+   and dashboard deployments so the live URLs pick up the change (**Deploy
+   > Manage deployments > Edit > New version**, for each).
+2. **Run the schema migration once.** Open this URL in a browser (fills in
+   the `Archived`/`Categories` headers on your existing sheets — safe to
+   rerun):
+   ```
+   https://script.google.com/macros/s/YOUR_SLACK_DEPLOYMENT_ID/exec?action=ensureSchemaColumns&secret=YOUR_SHARED_SECRET
+   ```
+3. **Update the Slack app.** Go to your app at
+   [api.slack.com/apps](https://api.slack.com/apps), open **App Manifest**
+   in the left sidebar, and paste in the updated
+   `docs/slack-app-manifest.yml` (with the placeholders filled in the same
+   way as the first time) to add the two new slash commands and two global
+   shortcuts in one go, instead of configuring each by hand.
+
+Then set the two new script properties (`PROJECT_ADMIN_SLACK_IDS`,
+`DASHBOARD_URL`) from the table in step 4 above.

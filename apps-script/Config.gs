@@ -44,3 +44,27 @@ function getDashboardAllowedEmails_() {
   var v = getProp_('DASHBOARD_ALLOWED_EMAILS', false);
   return v ? v.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
 }
+
+// Comma-separated Slack user IDs (e.g. "U04QAL3TN, U08ABCDEF") allowed to
+// activate/deactivate/archive projects via /hours-projects. Find a
+// person's Slack user ID via their profile ("..." menu > Copy member ID).
+// Unset/empty means nobody can use /hours-projects (fail closed).
+function getProjectAdminIds_() {
+  var v = getProp_('PROJECT_ADMIN_SLACK_IDS', false);
+  return v ? v.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : [];
+}
+
+function isProjectAdmin_(slackUserId) {
+  return getProjectAdminIds_().indexOf(slackUserId) !== -1;
+}
+
+// The *dashboard* deployment's own web app URL (the "Execute as: User
+// accessing the web app" one) -- distinct from the Slack deployment this
+// script is actually running as when this getter is called. Apps Script
+// has no built-in way to look up a sibling deployment's URL at runtime, so
+// this is just a Script Property you set once after deploying the
+// dashboard (see docs/SETUP.md). Used by /hours-dashboard and the "Open
+// dashboard" shortcut.
+function getDashboardUrl_() {
+  return getProp_('DASHBOARD_URL', true);
+}

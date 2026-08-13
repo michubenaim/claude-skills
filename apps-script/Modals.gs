@@ -2,6 +2,11 @@
  * Slack Block Kit view/message builders.
  */
 
+// Activity tags selectable per project in the log-hours modal. Multiple
+// may be checked; "Other" pairs with a free-text field (see
+// buildLogHoursModal_ and parseSubmittedCategories_ in Code.gs).
+var CATEGORY_OPTIONS_ = ['Research', 'Strat', 'Design', 'Mtgs/Rev (internal)', 'Client service', 'Admin', 'Other'];
+
 // One number_input block per active project. Slack modals can't easily grow
 // rows dynamically without extra round-trips, so v1 shows every active
 // project and the user leaves the ones they didn't touch blank -- fine for
@@ -58,6 +63,26 @@ function buildLogHoursModal_(projects, dateStr, totals) {
       label: { type: 'plain_text', text: 'Note for ' + project.name },
       element: { type: 'plain_text_input', action_id: 'value' }
     });
+    blocks.push({
+      type: 'input',
+      block_id: 'project_' + i + '_categories',
+      optional: true,
+      label: { type: 'plain_text', text: 'Category for ' + project.name },
+      element: {
+        type: 'checkboxes',
+        action_id: 'value',
+        options: CATEGORY_OPTIONS_.map(function (c) {
+          return { text: { type: 'plain_text', text: c }, value: c };
+        })
+      }
+    });
+    blocks.push({
+      type: 'input',
+      block_id: 'project_' + i + '_other',
+      optional: true,
+      label: { type: 'plain_text', text: 'If "Other," describe' },
+      element: { type: 'plain_text_input', action_id: 'value' }
+    });
   });
 
   return {
@@ -93,6 +118,86 @@ function buildReminderBlocks_(dateStr, text) {
       }]
     }
   ];
+}
+
+// Ephemeral message body for /hours-projects: one section + a pair of
+// toggle buttons per project. Buttons carry the project name as `value`
+// and a fixed action_id (toggle_active / toggle_archived) -- the handler
+// (Code.gs) flips the corresponding sheet flag and re-posts this same
+// builder via response_url with replace_original so the message updates
+// in place instead of piling up new messages per click.
+function buildProjectsAdminBlocks_(projects) {
+  if (projects.length === 0) {
+    return [{ type: 'section', text: { type: 'mrkdwn', text: 'No projects configured yet. Add rows to the *Projects* sheet first.' } }];
+  }
+
+  var blocks = [
+    { type: 'section', text: { type: 'mrkdwn', text: '*Manage projects*' } },
+    { type: 'divider' }
+  ];
+
+  projects.forEach(function (p) {
+    // Status reflects the raw Active checkbox (what the button below
+    // actually toggles); a separate note flags when it's checked on but
+    // not currently showing in the modal anyway due to StartDate/EndDate.
+    var status = [p.rawActive ? ':large_green_circle: Active' : ':white_circle: Inactive'];
+    if (p.rawActive && !p.active && !p.archived) status.push('(outside its date window right now)');
+    if (p.archived) status.push(':package: Archived (hidden from dashboard)');
+
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: '*' + p.name + '*\n' + status.join(' · ') }
+    });
+    blocks.push({
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: p.rawActive ? 'Deactivate' : 'Activate' },
+          action_id: 'toggle_active',
+          value: p.name
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: p.archived ? 'Unarchive' : 'Archive' },
+          action_id: 'toggle_archived',
+          value: p.name
+        }
+      ]
+    });
+    blocks.push({ type: 'divider' });
+  });
+
+  return blocks;
+}
+
+// A single "open the dashboard" link button. Buttons with a `url` (rather
+// than relying on action_id handling) just open the link client-side --
+// no server round-trip needed, so this works identically whether it's
+// dropped into an ephemeral message (/hours-dashboard) or a modal (the
+// "Open dashboard" global shortcut).
+function buildDashboardLinkBlocks_(dashboardUrl) {
+  return [
+    { type: 'section', text: { type: 'mrkdwn', text: ':bar_chart: Your Hours Tracker dashboard:' } },
+    {
+      type: 'actions',
+      elements: [{
+        type: 'button',
+        text: { type: 'plain_text', text: 'Open dashboard' },
+        url: dashboardUrl,
+        style: 'primary'
+      }]
+    }
+  ];
+}
+
+function buildDashboardLinkModal_(dashboardUrl) {
+  return {
+    type: 'modal',
+    title: { type: 'plain_text', text: 'Hours Tracker' },
+    close: { type: 'plain_text', text: 'Close' },
+    blocks: buildDashboardLinkBlocks_(dashboardUrl)
+  };
 }
 
 // Formats one block per project: budget balance at the start of the month

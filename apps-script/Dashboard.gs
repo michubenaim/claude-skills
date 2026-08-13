@@ -40,13 +40,16 @@ function renderDashboard_(email) {
 
 // ---- google.script.run entry points (called from client JS below) ----
 
-function dashboardFetchData(rangePayload) {
+// filterPayload: { preset, start, end, person, project, includeArchived }.
+// person/project/includeArchived are all optional -- omitted means
+// unfiltered (person/project) or archived-excluded (includeArchived).
+function dashboardFetchData(filterPayload) {
   var email = Session.getActiveUser().getEmail();
   if (!isDashboardViewerAllowed_(email)) return { error: 'not_allowed' };
 
-  var range = resolveRange_(rangePayload && rangePayload.preset, rangePayload && rangePayload.start, rangePayload && rangePayload.end);
-  var entries = getEntriesInRange_(range.start, range.end);
-  var projects = getAllProjects_();
+  var range = resolveRange_(filterPayload && filterPayload.preset, filterPayload && filterPayload.start, filterPayload && filterPayload.end);
+  var entries = applyEntryFilters_(getEntriesInRange_(range.start, range.end), filterPayload);
+  var projects = resolveDashboardProjects_(filterPayload);
   var totalsAllTime = getProjectTotalsAllTime_();
 
   var byPerson = tallyPersonProject_(entries);
@@ -60,9 +63,14 @@ function dashboardFetchData(rangePayload) {
   return {
     range: range,
     projects: projectsForClient_(projects),
+    // Filter dropdown options -- independent of the current filters/range,
+    // so switching person/project doesn't shrink the other dropdown's choices.
+    allPersonNames: getAllKnownUserNames_(),
+    allProjectNames: getAllProjects_().map(function (p) { return p.name; }),
     totalsAllTime: totalsAllTime,
     statuses: statuses,
     ranking: rankProjectsByHours_(entries),
+    categoryRanking: rankCategoriesByHours_(entries),
     burndown: buildBurndownSeries_(entries, projects, range.start, range.end),
     byProjectTable: buildMatrixTable_(byProject, projectNames, personNames, 'Project', 'No hours logged in this range.'),
     byPersonTable: buildMatrixTable_(byPerson, personNames, projectNames, 'Person', 'No hours logged in this range.'),
@@ -70,19 +78,19 @@ function dashboardFetchData(rangePayload) {
   };
 }
 
-function dashboardExport(rangePayload) {
+function dashboardExport(filterPayload) {
   var email = Session.getActiveUser().getEmail();
   if (!isDashboardViewerAllowed_(email)) return { error: 'not_allowed' };
 
-  var range = resolveRange_(rangePayload && rangePayload.preset, rangePayload && rangePayload.start, rangePayload && rangePayload.end);
-  var entries = getEntriesInRange_(range.start, range.end);
+  var range = resolveRange_(filterPayload && filterPayload.preset, filterPayload && filterPayload.start, filterPayload && filterPayload.end);
+  var entries = applyEntryFilters_(getEntriesInRange_(range.start, range.end), filterPayload);
 
-  var sheet = getOrCreateSheet_('Export', ['Date', 'Person', 'Project', 'Hours', 'Note']);
+  var sheet = getOrCreateSheet_('Export', ['Date', 'Person', 'Project', 'Hours', 'Note', 'Categories']);
   sheet.clearContents();
-  sheet.appendRow(['Date', 'Person', 'Project', 'Hours', 'Note']);
+  sheet.appendRow(['Date', 'Person', 'Project', 'Hours', 'Note', 'Categories']);
   if (entries.length > 0) {
-    var rows = entries.map(function (e) { return [e.date, e.userName, e.project, e.hours, e.note]; });
-    sheet.getRange(2, 1, rows.length, 5).setValues(rows);
+    var rows = entries.map(function (e) { return [e.date, e.userName, e.project, e.hours, e.note, e.categories]; });
+    sheet.getRange(2, 1, rows.length, 6).setValues(rows);
   }
   return { ok: true, rows: entries.length, range: range };
 }
@@ -177,6 +185,11 @@ function buildDashboardShellHtml_() {
           '<input type="date" id="custom-start"> <span>to</span> <input type="date" id="custom-end">' +
           '<button class="btn btn-small" id="custom-apply" type="button">Apply</button>' +
         '</div>' +
+        '<div class="filters-row">' +
+          '<label>Person <select id="filter-person"><option value="">Everyone</option></select></label>' +
+          '<label>Project <select id="filter-project"><option value="">All projects</option></select></label>' +
+          '<label class="checkbox-label"><input type="checkbox" id="filter-archived"> Show archived</label>' +
+        '</div>' +
         '<p class="status-msg" id="status-msg"></p>' +
       '</header>' +
 
@@ -188,6 +201,8 @@ function buildDashboardShellHtml_() {
         '<h2>Burn-down <select id="burndown-project"></select></h2>' +
         '<div id="burndown-chart" class="chart"></div>' +
       '</section>' +
+
+      '<section><h2>Hours by category</h2><div id="category-chart" class="chart"></div></section>' +
 
       '<section><h2>By project, by person</h2><div id="matrix-by-project"></div></section>' +
       '<section><h2>By person, by project</h2><div id="matrix-by-person"></div></section>' +
@@ -201,7 +216,8 @@ function buildDashboardShellHtml_() {
 
 var DASHBOARD_CLIENT_JS_ = '' +
 'google.charts.load("current", {packages: ["corechart", "bar"]});\n' +
-'var dashCurrentRange = {preset: "week"};\n' +
+'var dashState = { preset: "week", person: "", project: "", includeArchived: false };\n' +
+'var dashLastData = null;\n' +
 '\n' +
 'document.addEventListener("DOMContentLoaded", function () {\n' +
 '  document.querySelectorAll(".range-btn").forEach(function (btn) {\n' +
@@ -210,11 +226,14 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '      btn.classList.add("active");\n' +
 '      var preset = btn.getAttribute("data-preset");\n' +
 '      var customRow = document.getElementById("custom-row");\n' +
+'      dashState.preset = preset;\n' +
+'      delete dashState.start;\n' +
+'      delete dashState.end;\n' +
 '      if (preset === "custom") {\n' +
 '        customRow.classList.add("visible");\n' +
 '      } else {\n' +
 '        customRow.classList.remove("visible");\n' +
-'        dashLoad({ preset: preset });\n' +
+'        dashLoad();\n' +
 '      }\n' +
 '    });\n' +
 '  });\n' +
@@ -222,7 +241,22 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '    var start = document.getElementById("custom-start").value;\n' +
 '    var end = document.getElementById("custom-end").value;\n' +
 '    if (!start || !end) return;\n' +
-'    dashLoad({ preset: "custom", start: start, end: end });\n' +
+'    dashState.preset = "custom";\n' +
+'    dashState.start = start;\n' +
+'    dashState.end = end;\n' +
+'    dashLoad();\n' +
+'  });\n' +
+'  document.getElementById("filter-person").addEventListener("change", function (e) {\n' +
+'    dashState.person = e.target.value;\n' +
+'    dashLoad();\n' +
+'  });\n' +
+'  document.getElementById("filter-project").addEventListener("change", function (e) {\n' +
+'    dashState.project = e.target.value;\n' +
+'    dashLoad();\n' +
+'  });\n' +
+'  document.getElementById("filter-archived").addEventListener("change", function (e) {\n' +
+'    dashState.includeArchived = e.target.checked;\n' +
+'    dashLoad();\n' +
 '  });\n' +
 '  document.getElementById("export-btn").addEventListener("click", function () {\n' +
 '    dashSetStatus("Exporting…");\n' +
@@ -230,15 +264,14 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '      dashSetStatus(res && res.ok ? ("Exported " + res.rows + " rows to the \\"Export\\" tab.") : "Export failed.");\n' +
 '    }).withFailureHandler(function (err) {\n' +
 '      dashSetStatus("Export failed: " + err.message);\n' +
-'    }).dashboardExport(dashCurrentRange);\n' +
+'    }).dashboardExport(dashState);\n' +
 '  });\n' +
-'  google.charts.setOnLoadCallback(function () { dashLoad({ preset: "week" }); });\n' +
+'  google.charts.setOnLoadCallback(function () { dashLoad(); });\n' +
 '});\n' +
 '\n' +
 'function dashSetStatus(msg) { document.getElementById("status-msg").textContent = msg || ""; }\n' +
 '\n' +
-'function dashLoad(range) {\n' +
-'  dashCurrentRange = range;\n' +
+'function dashLoad() {\n' +
 '  dashSetStatus("Loading…");\n' +
 '  google.script.run.withSuccessHandler(function (data) {\n' +
 '    if (data && data.error) { dashSetStatus("Not authorized."); return; }\n' +
@@ -246,17 +279,39 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '    dashRender(data);\n' +
 '  }).withFailureHandler(function (err) {\n' +
 '    dashSetStatus("Error: " + err.message);\n' +
-'  }).dashboardFetchData(range);\n' +
+'  }).dashboardFetchData(dashState);\n' +
 '}\n' +
 '\n' +
 'function dashRender(data) {\n' +
+'  dashLastData = data;\n' +
 '  document.getElementById("range-label").textContent = data.range.label + " (" + data.range.start + " to " + data.range.end + ")";\n' +
+'  dashRenderFilterOptions(data);\n' +
 '  dashRenderCards(data);\n' +
-'  dashRenderRanking(data);\n' +
+'  dashRenderBarChart("ranking-chart", data.ranking.map(function (r) { return [r.project, r.hours]; }), "No hours logged in this range.");\n' +
 '  dashRenderBurndownSelector(data);\n' +
+'  dashRenderBarChart("category-chart", data.categoryRanking.map(function (r) { return [r.category, r.hours]; }), "No categories tagged in this range yet.");\n' +
 '  document.getElementById("matrix-by-project").innerHTML = data.byProjectTable;\n' +
 '  document.getElementById("matrix-by-person").innerHTML = data.byPersonTable;\n' +
 '  document.getElementById("share-lists").innerHTML = data.shareHtml;\n' +
+'}\n' +
+'\n' +
+'function dashFillSelect(select, options, currentValue, placeholderLabel) {\n' +
+'  select.innerHTML = "";\n' +
+'  var placeholder = document.createElement("option");\n' +
+'  placeholder.value = ""; placeholder.textContent = placeholderLabel;\n' +
+'  select.appendChild(placeholder);\n' +
+'  options.forEach(function (name) {\n' +
+'    var opt = document.createElement("option");\n' +
+'    opt.value = name; opt.textContent = name;\n' +
+'    select.appendChild(opt);\n' +
+'  });\n' +
+'  select.value = currentValue || "";\n' +
+'}\n' +
+'\n' +
+'function dashRenderFilterOptions(data) {\n' +
+'  dashFillSelect(document.getElementById("filter-person"), data.allPersonNames, dashState.person, "Everyone");\n' +
+'  dashFillSelect(document.getElementById("filter-project"), data.allProjectNames, dashState.project, "All projects");\n' +
+'  document.getElementById("filter-archived").checked = !!dashState.includeArchived;\n' +
 '}\n' +
 '\n' +
 'function dashEscape(str) {\n' +
@@ -274,7 +329,7 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '\n' +
 'function dashRenderCards(data) {\n' +
 '  var container = document.getElementById("cards");\n' +
-'  if (!data.projects.length) { container.innerHTML = "<p class=\\"empty\\">No projects configured yet.</p>"; return; }\n' +
+'  if (!data.projects.length) { container.innerHTML = "<p class=\\"empty\\">No projects match the current filters.</p>"; return; }\n' +
 '  var rangeTotals = {};\n' +
 '  data.ranking.forEach(function (r) { rangeTotals[r.project] = r.hours; });\n' +
 '\n' +
@@ -293,7 +348,7 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '    var dates = (p.startDate || p.endDate) ? ("<div class=\\"card-dates\\">" + (p.startDate || "…") + " – " + (p.endDate || "ongoing") + "</div>") : "";\n' +
 '    return "<div class=\\"card" + (p.active ? "" : " inactive") + "\\">" +\n' +
 '      "<div class=\\"card-head\\"><span class=\\"card-name\\">" + dashEscape(p.name) + "</span>" +\n' +
-'      "<div class=\\"badges\\">" + dashBadge(status.budgetStatus) + dashBadge(status.scheduleStatus) + "</div></div>" +\n' +
+'      "<div class=\\"badges\\">" + dashBadge(status.budgetStatus) + dashBadge(status.scheduleStatus) + (p.archived ? "<span class=\\"badge badge-neutral\\">Archived</span>" : "") + "</div></div>" +\n' +
 '      barHtml +\n' +
 '      "<div class=\\"card-meta\\">" + (rangeTotals[p.name] || 0).toFixed(1) + "h in this range</div>" +\n' +
 '      dates +\n' +
@@ -319,21 +374,20 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '  return base;\n' +
 '}\n' +
 '\n' +
-'function dashRenderRanking(data) {\n' +
-'  var el = document.getElementById("ranking-chart");\n' +
-'  if (!data.ranking.length) { el.innerHTML = "<p class=\\"empty\\">No hours logged in this range.</p>"; return; }\n' +
+'// rows: [[label, hours], ...], already sorted by the server.\n' +
+'function dashRenderBarChart(elId, rows, emptyMessage) {\n' +
+'  var el = document.getElementById(elId);\n' +
+'  if (!rows.length) { el.innerHTML = "<p class=\\"empty\\">" + dashEscape(emptyMessage) + "</p>"; return; }\n' +
 '  el.innerHTML = "";\n' +
 '  var dt = new google.visualization.DataTable();\n' +
-'  dt.addColumn("string", "Project");\n' +
+'  dt.addColumn("string", "Label");\n' +
 '  dt.addColumn("number", "Hours");\n' +
-'  dt.addRows(data.ranking.map(function (r) { return [r.project, r.hours]; }));\n' +
+'  dt.addRows(rows);\n' +
 '  var chart = new google.visualization.BarChart(el);\n' +
-'  chart.draw(dt, dashChartOptions({ legend: { position: "none" }, hAxis: { title: "Hours" }, height: Math.max(140, data.ranking.length * 34) }));\n' +
+'  chart.draw(dt, dashChartOptions({ legend: { position: "none" }, hAxis: { title: "Hours" }, height: Math.max(140, rows.length * 34) }));\n' +
 '}\n' +
 '\n' +
-'var dashLastData = null;\n' +
 'function dashRenderBurndownSelector(data) {\n' +
-'  dashLastData = data;\n' +
 '  var select = document.getElementById("burndown-project");\n' +
 '  var current = select.value;\n' +
 '  select.innerHTML = "";\n' +
@@ -343,7 +397,7 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '    select.appendChild(opt);\n' +
 '  });\n' +
 '  select.onchange = function () { dashDrawBurndown(select.value); };\n' +
-'  if (!data.projects.length) { document.getElementById("burndown-chart").innerHTML = "<p class=\\"empty\\">No projects configured yet.</p>"; return; }\n' +
+'  if (!data.projects.length) { document.getElementById("burndown-chart").innerHTML = "<p class=\\"empty\\">No projects match the current filters.</p>"; return; }\n' +
 '  var target = (current && data.burndown[current]) ? current : data.projects[0].name;\n' +
 '  select.value = target;\n' +
 '  dashDrawBurndown(target);\n' +
@@ -390,6 +444,9 @@ var DASHBOARD_CSS_ = '' +
   '.custom-row{display:none;align-items:center;gap:8px;margin:10px 0 0;font-size:13px;color:var(--text-soft);}' +
   '.custom-row.visible{display:flex;}' +
   '.custom-row input{font:inherit;padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);}' +
+  '.filters-row{display:flex;align-items:center;gap:16px;margin:14px 0 0;flex-wrap:wrap;font-size:12.5px;color:var(--text-soft);}' +
+  '.filters-row label{display:flex;align-items:center;gap:6px;}' +
+  '.checkbox-label{cursor:pointer;}' +
   '.status-msg{min-height:16px;font-size:12px;color:var(--text-soft);margin:10px 0 0;}' +
   '.btn{font:inherit;font-weight:700;font-size:13px;border-radius:6px;padding:8px 16px;cursor:pointer;background:var(--accent);border:1px solid var(--accent);color:#fff;}' +
   '.btn-small{padding:5px 12px;font-size:12px;}' +
