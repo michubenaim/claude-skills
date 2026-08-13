@@ -18,10 +18,19 @@
 var PROJECTS_SHEET = 'Projects';
 var TIME_ENTRIES_SHEET = 'TimeEntries';
 var USERS_SHEET = 'Users';
-var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate', 'DeadlineAlerted'];
+var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate', 'DeadlineAlerted', 'UsedHours'];
+var PROJECTS_USED_HOURS_COL_ = 8; // 1-indexed -- keep in sync with PROJECTS_HEADERS position
 
+// Cached for the lifetime of a single execution only (Apps Script does not
+// persist globals between separate requests) -- avoids re-opening the
+// Spreadsheet on every getOrCreateSheet_ call within one request, which
+// otherwise adds up when a single command touches multiple tabs.
+var SHEETS_SPREADSHEET_CACHE_ = null;
 function getSpreadsheet_() {
-  return SpreadsheetApp.openById(getSpreadsheetId_());
+  if (!SHEETS_SPREADSHEET_CACHE_) {
+    SHEETS_SPREADSHEET_CACHE_ = SpreadsheetApp.openById(getSpreadsheetId_());
+  }
+  return SHEETS_SPREADSHEET_CACHE_;
 }
 
 function getOrCreateSheet_(name, headers) {
@@ -107,8 +116,26 @@ function appendTimeEntries_(userId, userName, dateStr, projectHours, projectNote
   });
   if (rows.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+    rows.forEach(function (row) { incrementProjectUsedHours_(row[4], row[5]); });
   }
   return rows.length;
+}
+
+// Bumps a single project's running UsedHours total in the Projects sheet by
+// deltaHours. Projects is small (dozens of rows at most) so this full read
+// is cheap, unlike scanning the ever-growing TimeEntries sheet. No-op if
+// the project isn't found (e.g. hours logged for a project row that's
+// since been renamed or deleted).
+function incrementProjectUsedHours_(projectName, deltaHours) {
+  var sheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === projectName) {
+      var current = Number(rows[i][PROJECTS_USED_HOURS_COL_ - 1]) || 0;
+      sheet.getRange(i + 1, PROJECTS_USED_HOURS_COL_).setValue(current + deltaHours);
+      return;
+    }
+  }
 }
 
 // Merges live Slack users.list results into the Users sheet: adds anyone new
@@ -179,9 +206,29 @@ function computeMonthlyTally_(monthStr) {
   return tally;
 }
 
-// Returns { projectName: totalHoursEverLogged }. Budgets are a lifetime
-// allocation (not scoped to a month), so this scans every TimeEntries row.
+// Returns { projectName: totalHoursEverLogged }, read from the Projects
+// sheet's UsedHours column (kept current by incrementProjectUsedHours_ on
+// every submission) -- O(number of projects), not O(size of TimeEntries).
+// This is on the hot path for /log-hours (Slack allows only ~3 seconds to
+// respond), so it must stay cheap regardless of how large TimeEntries
+// grows. See computeProjectTotalsFromEntries_ for the full-scan version
+// used only to (re)populate this column.
 function getProjectTotalsAllTime_() {
+  var sheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
+  var rows = sheet.getDataRange().getValues();
+  var totals = {};
+  for (var i = 1; i < rows.length; i++) {
+    var name = rows[i][0];
+    if (!name) continue;
+    totals[name] = Number(rows[i][PROJECTS_USED_HOURS_COL_ - 1]) || 0;
+  }
+  return totals;
+}
+
+// The original full TimeEntries scan getProjectTotalsAllTime_ used to do.
+// Kept only for backfillProjectUsedHours_ (the one-time migration/resync
+// function) -- never call this from a Slack-response code path.
+function computeProjectTotalsFromEntries_() {
   var sheet = getOrCreateSheet_(TIME_ENTRIES_SHEET,
     ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note']);
   var rows = sheet.getDataRange().getValues();
@@ -192,6 +239,27 @@ function getProjectTotalsAllTime_() {
     totals[project] = (totals[project] || 0) + hours;
   }
   return totals;
+}
+
+// One-time (or safe-to-rerun) migration: recomputes UsedHours for every
+// project from the full TimeEntries history and writes it into the
+// Projects sheet, adding the UsedHours header if it isn't there yet. Run
+// this once after deploying the UsedHours column, and again any time you
+// suspect the running total has drifted (e.g. after manually editing
+// TimeEntries).
+function backfillProjectUsedHours_() {
+  var sheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
+  if (String(sheet.getRange(1, PROJECTS_USED_HOURS_COL_).getValue()) !== 'UsedHours') {
+    sheet.getRange(1, PROJECTS_USED_HOURS_COL_).setValue('UsedHours');
+  }
+  var totals = computeProjectTotalsFromEntries_();
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    var name = rows[i][0];
+    if (!name) continue;
+    sheet.getRange(i + 1, PROJECTS_USED_HOURS_COL_).setValue(totals[name] || 0);
+  }
+  Logger.log('Backfilled UsedHours for ' + (rows.length - 1) + ' project row(s).');
 }
 
 // Returns { projectName: hoursLoggedStrictlyBeforeThisMonth }. Used to

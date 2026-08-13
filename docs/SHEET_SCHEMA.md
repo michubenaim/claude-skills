@@ -2,9 +2,9 @@
 
 ## Tabs (auto-created except `Projects`, which you fill in yourself)
 
-**Projects** (you maintain this)
-| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted |
-|---|---|---|---|---|---|---|
+**Projects** (you maintain this, except `UsedHours` -- see below)
+| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours |
+|---|---|---|---|---|---|---|---|
 
 `BudgetHours`, `StartDate`, and `EndDate` are all optional (leave `EndDate`
 blank for an ongoing project with no deadline). `BudgetHours` left blank
@@ -20,6 +20,14 @@ manual pause independent of the dates). Once `EndDate` passes, the bot also
 posts a "past deadline" warning to `REPORT_CHANNEL_ID` and sets
 `DeadlineAlerted` to `TRUE` so it only fires once — clear it back to
 `FALSE` (e.g. after pushing `EndDate` out) to allow another alert later.
+
+`UsedHours` is a running total the bot maintains automatically (incremented
+on every submission) so it can answer "how much budget is left" in O(1)
+instead of rescanning all of `TimeEntries` on every `/log-hours` — that
+scan is what caused `operation_timeout` errors as `TimeEntries` grew, since
+Slack only allows ~3 seconds for a response. Don't hand-edit this column;
+if it ever looks wrong (e.g. after manually editing `TimeEntries`), rerun
+`backfillProjectUsedHours_` from the Apps Script editor to resync it.
 
 **Users** (auto-synced from Slack nightly; `IncludeInReminders` is yours to edit)
 | SlackUserID | SlackUserName | IncludeInReminders |

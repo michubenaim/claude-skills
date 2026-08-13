@@ -8,13 +8,16 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
 1. Create a new Google Sheet (any name, e.g. "Team Hours").
 2. Note its ID from the URL: `https://docs.google.com/spreadsheets/d/THIS_PART/edit`.
 3. Add a `Projects` tab with header row
-   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted`,
+   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours`,
    then one row per project you want people to log hours against, e.g.:
 
-   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted |
-   |---|---|---|---|---|---|---|
-   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | |
-   | Internal Tools | #internal-tools | TRUE | | | | |
+   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours |
+   |---|---|---|---|---|---|---|---|
+   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | | |
+   | Internal Tools | #internal-tools | TRUE | | | | | |
+
+   Leave `UsedHours` blank — the bot maintains it automatically (see
+   `docs/SHEET_SCHEMA.md`).
 
    `SlackChannel` is just for your own reference (which channel = which
    project); the bot doesn't read Slack channels automatically in v1.
