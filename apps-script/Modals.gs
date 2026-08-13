@@ -55,7 +55,7 @@ function buildLogHoursModal_(projects, dateStr, totals) {
       type: 'input',
       block_id: 'project_' + i + '_note',
       optional: true,
-      label: { type: 'plain_text', text: 'Note for ' + project.name + ' (optional)' },
+      label: { type: 'plain_text', text: 'Note for ' + project.name },
       element: { type: 'plain_text_input', action_id: 'value' }
     });
   });
