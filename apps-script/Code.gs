@@ -11,9 +11,32 @@
  * the web app) -- see docs/SETUP.md. On the Slack deployment (Execute as:
  * Me, anonymous access) there is no signed-in user, so doGet just returns a
  * health-check string there instead.
+ *
+ * doGet also accepts ?action=<name>&secret=<SLACK_SHARED_SECRET> on the
+ * Slack deployment to run a small allowlist of maintenance functions (see
+ * ADMIN_ACTIONS_) without needing the Apps Script editor -- useful since
+ * its function dropdown/execution log has been known to get stuck. Reuses
+ * the existing shared secret; this doesn't widen the trust boundary since
+ * that secret already fully authorizes writes via doPost.
  */
 
+var ADMIN_ACTIONS_ = {
+  backfillUsedHours: backfillProjectUsedHours_
+};
+
 function doGet(e) {
+  var action = e.parameter && e.parameter.action;
+  if (action) {
+    if (e.parameter.secret !== getSlackSharedSecret_()) {
+      return ContentService.createTextOutput('Forbidden');
+    }
+    if (!ADMIN_ACTIONS_[action]) {
+      return ContentService.createTextOutput('Unknown action: ' + action);
+    }
+    ADMIN_ACTIONS_[action]();
+    return ContentService.createTextOutput('Ran ' + action + '. Check the target sheet to confirm.');
+  }
+
   var email = Session.getActiveUser().getEmail();
   if (!email) {
     return ContentService.createTextOutput('Hours Tracker is running.');
