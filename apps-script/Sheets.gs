@@ -1,7 +1,7 @@
 /**
  * All Google Sheets read/write logic. Sheet tabs:
  *
- * Projects     | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived
+ * Projects     | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories
  * TimeEntries  | Timestamp | Date | SlackUserID | SlackUserName | Project | Hours | Note | Categories
  * Users        | SlackUserID | SlackUserName | IncludeInReminders
  *
@@ -17,19 +17,25 @@
  * from Active: Active/inactive plus the date window governs whether a
  * project shows up in the daily modal; Archived governs whether it shows
  * up on the dashboard at all (default hidden once archived, with a
- * show-archived toggle). TimeEntries is append-only, written by the bot;
+ * show-archived toggle). RequiresCategories controls whether the modal
+ * shows the activity-category checkboxes for that project at all -- blank
+ * defaults to TRUE (unchanged behavior) so existing projects aren't
+ * silently affected; set it to FALSE for internal projects that don't need
+ * that level of detail. TimeEntries is append-only, written by the bot;
  * Categories is a comma-joined list of the activity tags selected for that
- * row (multiple allowed; "Other: <text>" when Other is picked with detail).
- * A MonthlyTally tab (created once, manually) reads TimeEntries via QUERY
- * formulas -- see docs/SHEET_SCHEMA.md.
+ * row (multiple allowed; "Other: <text>" when Other is picked with detail),
+ * blank if RequiresCategories was FALSE for that project. A MonthlyTally
+ * tab (created once, manually) reads TimeEntries via QUERY formulas -- see
+ * docs/SHEET_SCHEMA.md.
  */
 
 var PROJECTS_SHEET = 'Projects';
 var TIME_ENTRIES_SHEET = 'TimeEntries';
 var USERS_SHEET = 'Users';
-var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate', 'DeadlineAlerted', 'UsedHours', 'Archived'];
+var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate', 'DeadlineAlerted', 'UsedHours', 'Archived', 'RequiresCategories'];
 var PROJECTS_USED_HOURS_COL_ = 8; // 1-indexed -- keep in sync with PROJECTS_HEADERS position
 var PROJECTS_ARCHIVED_COL_ = 9; // 1-indexed -- keep in sync with PROJECTS_HEADERS position
+var PROJECTS_REQUIRES_CATEGORIES_COL_ = 10; // 1-indexed -- keep in sync with PROJECTS_HEADERS position
 var TIME_ENTRIES_HEADERS = ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note', 'Categories'];
 
 // Cached for the lifetime of a single execution only (Apps Script does not
@@ -82,10 +88,15 @@ function getAllProjects_() {
     var startDate = parseSheetDate_(rows[i][4]);
     var endDate = parseSheetDate_(rows[i][5]);
     var archivedFlag = rows[i][PROJECTS_ARCHIVED_COL_ - 1];
+    var requiresCategoriesFlag = rows[i][PROJECTS_REQUIRES_CATEGORIES_COL_ - 1];
     var overdue = !!endDate && today > endOfDay_(endDate);
     var withinWindow = (!startDate || today >= startDate) && !overdue;
     var archived = archivedFlag === true || String(archivedFlag).toUpperCase() === 'TRUE';
     var rawActive = activeFlag === true || String(activeFlag).toUpperCase() === 'TRUE';
+    // Blank/unset defaults to TRUE so pre-existing projects keep showing the
+    // categories checkboxes exactly as before this column was added; only an
+    // explicit FALSE opts a project out.
+    var requiresCategories = String(requiresCategoriesFlag).toUpperCase() !== 'FALSE';
 
     projects.push({
       name: name,
@@ -96,7 +107,8 @@ function getAllProjects_() {
       startDate: startDate,
       endDate: endDate,
       overdue: overdue,
-      archived: archived
+      archived: archived,
+      requiresCategories: requiresCategories
     });
   }
   return projects;
@@ -300,16 +312,21 @@ function backfillProjectUsedHours_() {
   Logger.log('Backfilled UsedHours for ' + (rows.length - 1) + ' project row(s).');
 }
 
-// One-time (safe-to-rerun) migration: adds the Archived header to Projects
-// and the Categories header to TimeEntries if either sheet was created
-// before those columns existed. Both new columns are fine left blank for
-// existing rows (blank Archived = not archived, blank Categories = no
-// tags recorded for that historical entry), so there's no data to backfill
-// here -- just the header cells.
+// One-time (safe-to-rerun) migration: adds the Archived and
+// RequiresCategories headers to Projects and the Categories header to
+// TimeEntries if the sheet was created before those columns existed. All
+// three are fine left blank for existing rows (blank Archived = not
+// archived, blank RequiresCategories = defaults to TRUE -- see
+// getAllProjects_ --, blank Categories = no tags recorded for that
+// historical entry), so there's no data to backfill here -- just the
+// header cells.
 function ensureSchemaColumns_() {
   var projectsSheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
   if (String(projectsSheet.getRange(1, PROJECTS_ARCHIVED_COL_).getValue()) !== 'Archived') {
     projectsSheet.getRange(1, PROJECTS_ARCHIVED_COL_).setValue('Archived');
+  }
+  if (String(projectsSheet.getRange(1, PROJECTS_REQUIRES_CATEGORIES_COL_).getValue()) !== 'RequiresCategories') {
+    projectsSheet.getRange(1, PROJECTS_REQUIRES_CATEGORIES_COL_).setValue('RequiresCategories');
   }
 
   var entriesSheet = getOrCreateSheet_(TIME_ENTRIES_SHEET, TIME_ENTRIES_HEADERS);
@@ -318,7 +335,7 @@ function ensureSchemaColumns_() {
     entriesSheet.getRange(1, categoriesCol).setValue('Categories');
   }
 
-  Logger.log('Schema columns ensured: Projects.Archived, TimeEntries.Categories.');
+  Logger.log('Schema columns ensured: Projects.Archived, Projects.RequiresCategories, TimeEntries.Categories.');
 }
 
 // Returns { projectName: hoursLoggedStrictlyBeforeThisMonth }. Used to

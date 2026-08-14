@@ -76,6 +76,7 @@ function doPost(e) {
 }
 
 function handleLogHoursCommand_(params) {
+  if (!claimOnce_('trig_' + params.trigger_id)) return ContentService.createTextOutput('');
   var projects = getActiveProjects_();
   var totals = getProjectTotalsAllTime_();
   var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -103,6 +104,7 @@ function handleDashboardCommand_(params) {
 
 function handleInteractivity_(payload) {
   if (payload.type === 'shortcut') {
+    if (!claimOnce_('trig_' + payload.trigger_id)) return ContentService.createTextOutput('');
     if (payload.callback_id === 'log_hours_shortcut') {
       var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
       slackOpenView_(payload.trigger_id, buildLogHoursModal_(getActiveProjects_(), today, getProjectTotalsAllTime_()));
@@ -116,6 +118,7 @@ function handleInteractivity_(payload) {
     var action = payload.actions && payload.actions[0];
 
     if (action && action.action_id === 'open_log_hours_modal') {
+      if (!claimOnce_('trig_' + payload.trigger_id)) return ContentService.createTextOutput('');
       var projects = getActiveProjects_();
       var totals = getProjectTotalsAllTime_();
       // The reminder button carries the date it's for (today for the
@@ -131,6 +134,13 @@ function handleInteractivity_(payload) {
   }
 
   if (payload.type === 'view_submission' && payload.view.callback_id === 'log_hours_submit') {
+    // The critical dedup: without this, a Slack-retried delivery of the
+    // same submission (see claimOnce_ in SlackApi.gs) would append a
+    // second set of TimeEntries rows and double-increment UsedHours.
+    if (!claimOnce_('view_' + payload.view.id, 300)) {
+      return ContentService.createTextOutput('');
+    }
+
     var metadata = JSON.parse(payload.view.private_metadata);
     var values = payload.view.state.values;
     var projectHours = {};

@@ -63,26 +63,32 @@ function buildLogHoursModal_(projects, dateStr, totals) {
       label: { type: 'plain_text', text: 'Note for ' + project.name },
       element: { type: 'plain_text_input', action_id: 'value' }
     });
-    blocks.push({
-      type: 'input',
-      block_id: 'project_' + i + '_categories',
-      optional: true,
-      label: { type: 'plain_text', text: 'Category for ' + project.name },
-      element: {
-        type: 'checkboxes',
-        action_id: 'value',
-        options: CATEGORY_OPTIONS_.map(function (c) {
-          return { text: { type: 'plain_text', text: c }, value: c };
-        })
-      }
-    });
-    blocks.push({
-      type: 'input',
-      block_id: 'project_' + i + '_other',
-      optional: true,
-      label: { type: 'plain_text', text: 'If "Other," describe' },
-      element: { type: 'plain_text_input', action_id: 'value' }
-    });
+    // Internal (non-client) projects can opt out of the category detail via
+    // RequiresCategories=FALSE on the Projects sheet -- skip both blocks
+    // entirely rather than just hiding them, so nothing shows up in
+    // private_metadata/state.values for parseSubmittedCategories_ to read.
+    if (project.requiresCategories !== false) {
+      blocks.push({
+        type: 'input',
+        block_id: 'project_' + i + '_categories',
+        optional: true,
+        label: { type: 'plain_text', text: 'Category for ' + project.name },
+        element: {
+          type: 'checkboxes',
+          action_id: 'value',
+          options: CATEGORY_OPTIONS_.map(function (c) {
+            return { text: { type: 'plain_text', text: c }, value: c };
+          })
+        }
+      });
+      blocks.push({
+        type: 'input',
+        block_id: 'project_' + i + '_other',
+        optional: true,
+        label: { type: 'plain_text', text: 'If "Other," describe' },
+        element: { type: 'plain_text_input', action_id: 'value' }
+      });
+    }
   });
 
   return {

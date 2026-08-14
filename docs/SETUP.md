@@ -8,17 +8,21 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
 1. Create a new Google Sheet (any name, e.g. "Team Hours").
 2. Note its ID from the URL: `https://docs.google.com/spreadsheets/d/THIS_PART/edit`.
 3. Add a `Projects` tab with header row
-   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived`,
+   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories`,
    then one row per project you want people to log hours against, e.g.:
 
-   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived |
-   |---|---|---|---|---|---|---|---|---|
-   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | | | |
-   | Internal Tools | #internal-tools | TRUE | | | | | | |
+   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories |
+   |---|---|---|---|---|---|---|---|---|---|
+   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | | | | |
+   | Internal Tools | #internal-tools | TRUE | | | | | | | FALSE |
 
    Leave `UsedHours` and `Archived` blank — the bot maintains/toggles them
    automatically (`Archived` can also be toggled from Slack via
-   `/hours-projects` — see `docs/SHEET_SCHEMA.md`).
+   `/hours-projects` — see `docs/SHEET_SCHEMA.md`). Leave
+   `RequiresCategories` blank (or `TRUE`) for studio client projects that
+   should show the full activity-category checkboxes in the modal; set it
+   to `FALSE` for internal projects that don't need that level of detail
+   (like `Internal Tools` above).
 
    `SlackChannel` is just for your own reference (which channel = which
    project); the bot doesn't read Slack channels automatically in v1.
@@ -212,6 +216,18 @@ those users to activate/deactivate/archive projects directly from Slack.
   (`CATEGORY_OPTIONS_`) if you want to rename or add one — there's no
   Script Property for this since it changes the modal's structure, not
   just a value.
+- Slack automatically retries a slash-command/interactivity delivery it
+  believes was dropped or too slow — which, combined with Apps Script not
+  being able to read the `X-Slack-Retry-Num` header that would normally
+  flag this, used to show up as the "We had some trouble connecting. Try
+  again?" banner and, worse, a duplicate `TimeEntries` row (and
+  double-counted `UsedHours`) if the retry landed after the first attempt
+  had already written the entry. `claimOnce_` in `SlackApi.gs` closes this:
+  every trigger_id/view.id is claimed via `CacheService` the first time
+  it's seen, and any retry of that same event is silently dropped instead
+  of reprocessed. The banner may still occasionally flash on a slow
+  response, but it should no longer produce a duplicate entry or throw off
+  the math.
 
 ## Adding these features to an already-set-up installation
 
@@ -224,8 +240,8 @@ from scratch):
    and dashboard deployments so the live URLs pick up the change (**Deploy
    > Manage deployments > Edit > New version**, for each).
 2. **Run the schema migration once.** Open this URL in a browser (fills in
-   the `Archived`/`Categories` headers on your existing sheets — safe to
-   rerun):
+   the `Archived`/`RequiresCategories`/`Categories` headers on your
+   existing sheets — safe to rerun):
    ```
    https://script.google.com/macros/s/YOUR_SLACK_DEPLOYMENT_ID/exec?action=ensureSchemaColumns&secret=YOUR_SHARED_SECRET
    ```

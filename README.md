@@ -8,7 +8,9 @@ tally per team member per project — no subscriptions, no hosting bill.
   global shortcut). Opens a modal listing your active projects; fill in
   hours, an optional per-project note, and any activity categories
   (Research, Strat, Design, Mtgs/Rev, Client service, Admin, Other) for
-  whichever ones you touched today.
+  whichever ones you touched today — client projects only, by default,
+  since internal projects can opt out of that level of detail (see
+  `RequiresCategories` in `docs/SHEET_SCHEMA.md`).
 - Every weekday morning at 9:15am, anyone with zero hours logged for the
   last business day gets a follow-up nudge, with a button that opens the
   modal pre-set to backfill that missed day specifically.

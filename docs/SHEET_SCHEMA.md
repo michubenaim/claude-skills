@@ -3,8 +3,8 @@
 ## Tabs (auto-created except `Projects`, which you fill in yourself)
 
 **Projects** (you maintain this, except `UsedHours` -- see below)
-| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived |
-|---|---|---|---|---|---|---|---|---|
+| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories |
+|---|---|---|---|---|---|---|---|---|---|
 
 `BudgetHours`, `StartDate`, and `EndDate` are all optional (leave `EndDate`
 blank for an ongoing project with no deadline). `BudgetHours` left blank
@@ -38,6 +38,14 @@ user IDs in `PROJECT_ADMIN_SLACK_IDS`) — that command shows every
 project's current state with **Activate/Deactivate** and **Archive/
 Unarchive** buttons that update in place.
 
+`RequiresCategories` controls whether the log-hours modal shows the
+activity-category checkboxes (Research/Strat/Design/etc., see `Categories`
+below) for that project at all. Leave it blank or `TRUE` for studio client
+projects that want that detail; set it to `FALSE` for internal projects
+that don't need to be broken down that granularly — the modal just shows
+hours + note for those. Blank defaults to `TRUE` so existing projects are
+unaffected until you opt one out.
+
 **Users** (auto-synced from Slack nightly; `IncludeInReminders` is yours to edit)
 | SlackUserID | SlackUserName | IncludeInReminders |
 |---|---|---|
@@ -60,7 +68,9 @@ entry, and picking `Other` adds a free-text field whose contents get
 folded in as `Other: <text>`. An entry tagged with several categories
 contributes its full hours to *each* tag when the dashboard tallies "hours
 by category" (not a split fraction) — the idea is "what kinds of work
-happened," not exact time-per-category accounting.
+happened," not exact time-per-category accounting. Blank for entries
+logged against a project with `RequiresCategories` set to `FALSE`, since
+the modal doesn't show the checkboxes for those at all.
 
 ## Getting the monthly tally
 

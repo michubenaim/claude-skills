@@ -19,6 +19,24 @@ function verifySlackRequest_(e) {
   return !!provided && provided === expected;
 }
 
+// Slack retries a slash-command/interactivity delivery if it thinks the
+// first attempt was dropped or too slow, normally distinguishable via the
+// X-Slack-Retry-Num header -- which Apps Script cannot read (see the file
+// comment above), so a retried request looks identical to a fresh one and
+// would otherwise re-run the same modal-open or, worse, re-append the same
+// TimeEntries rows. This is a content-based substitute: the FIRST time a
+// given key is seen it's claimed (and the call returns true); any repeat
+// of that same key within ttlSeconds returns false, so callers should skip
+// processing rather than act again. Callers key this on something stable
+// across a retry of the *same* event (trigger_id for modal-opening,
+// view.id for a modal submission) -- see handleInteractivity_ in Code.gs.
+function claimOnce_(key, ttlSeconds) {
+  var cache = CacheService.getScriptCache();
+  if (cache.get(key)) return false;
+  cache.put(key, '1', ttlSeconds || 120);
+  return true;
+}
+
 function callSlackApi_(method, payload) {
   var response = UrlFetchApp.fetch('https://slack.com/api/' + method, {
     method: 'post',
