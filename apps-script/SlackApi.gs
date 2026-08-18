@@ -37,6 +37,16 @@ function claimOnce_(key, ttlSeconds) {
   return true;
 }
 
+// Pairs with claimOnce_: call this if processing after a successful claim
+// actually failed, so the claim doesn't permanently block a legitimate
+// Slack retry (or a resubmit) of the same event from getting a real second
+// attempt. Without this, a transient failure (a Sheets error, a lock
+// timeout) would silently and permanently eat that submission instead of
+// just failing the one attempt.
+function releaseClaim_(key) {
+  CacheService.getScriptCache().remove(key);
+}
+
 function callSlackApi_(method, payload) {
   var response = UrlFetchApp.fetch('https://slack.com/api/' + method, {
     method: 'post',

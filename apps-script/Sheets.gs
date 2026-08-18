@@ -164,9 +164,20 @@ function appendTimeEntries_(userId, userName, dateStr, projectHours, projectNote
       ]);
     }
   });
-  if (rows.length > 0) {
+  if (rows.length === 0) return 0;
+
+  // The whole team gets DMed at once every evening and tends to log around
+  // the same time, so concurrent submissions racing on sheet.getLastRow()
+  // (two writers both computing the same "next row" and clobbering each
+  // other) or on incrementProjectUsedHours_'s read-then-write are a real
+  // risk, not a theoretical one -- this is the standard Apps Script fix.
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
     sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
     rows.forEach(function (row) { incrementProjectUsedHours_(row[4], row[5]); });
+  } finally {
+    lock.releaseLock();
   }
   return rows.length;
 }

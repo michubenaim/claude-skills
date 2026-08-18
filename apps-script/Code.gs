@@ -76,11 +76,18 @@ function doPost(e) {
 }
 
 function handleLogHoursCommand_(params) {
-  if (!claimOnce_('trig_' + params.trigger_id)) return ContentService.createTextOutput('');
-  var projects = getActiveProjects_();
-  var totals = getProjectTotalsAllTime_();
-  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  slackOpenView_(params.trigger_id, buildLogHoursModal_(projects, today, totals));
+  var claimKey = 'trig_' + params.trigger_id;
+  if (!claimOnce_(claimKey)) return ContentService.createTextOutput('');
+  try {
+    var projects = getActiveProjects_();
+    var totals = getProjectTotalsAllTime_();
+    var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    slackOpenView_(params.trigger_id, buildLogHoursModal_(projects, today, totals));
+  } catch (err) {
+    releaseClaim_(claimKey); // let a retry actually try again instead of eating it silently
+    Logger.log('handleLogHoursCommand_ failed: ' + err);
+    throw err;
+  }
   return ContentService.createTextOutput('');
 }
 
@@ -104,12 +111,19 @@ function handleDashboardCommand_(params) {
 
 function handleInteractivity_(payload) {
   if (payload.type === 'shortcut') {
-    if (!claimOnce_('trig_' + payload.trigger_id)) return ContentService.createTextOutput('');
-    if (payload.callback_id === 'log_hours_shortcut') {
-      var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      slackOpenView_(payload.trigger_id, buildLogHoursModal_(getActiveProjects_(), today, getProjectTotalsAllTime_()));
-    } else if (payload.callback_id === 'open_dashboard_shortcut') {
-      slackOpenView_(payload.trigger_id, buildDashboardLinkModal_(getDashboardUrl_()));
+    var shortcutClaimKey = 'trig_' + payload.trigger_id;
+    if (!claimOnce_(shortcutClaimKey)) return ContentService.createTextOutput('');
+    try {
+      if (payload.callback_id === 'log_hours_shortcut') {
+        var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        slackOpenView_(payload.trigger_id, buildLogHoursModal_(getActiveProjects_(), today, getProjectTotalsAllTime_()));
+      } else if (payload.callback_id === 'open_dashboard_shortcut') {
+        slackOpenView_(payload.trigger_id, buildDashboardLinkModal_(getDashboardUrl_()));
+      }
+    } catch (err) {
+      releaseClaim_(shortcutClaimKey);
+      Logger.log('shortcut handling failed: ' + err);
+      throw err;
     }
     return ContentService.createTextOutput('');
   }
@@ -118,14 +132,21 @@ function handleInteractivity_(payload) {
     var action = payload.actions && payload.actions[0];
 
     if (action && action.action_id === 'open_log_hours_modal') {
-      if (!claimOnce_('trig_' + payload.trigger_id)) return ContentService.createTextOutput('');
-      var projects = getActiveProjects_();
-      var totals = getProjectTotalsAllTime_();
-      // The reminder button carries the date it's for (today for the
-      // evening ping, the skipped day for the missed-entry nudge); fall
-      // back to today if it's missing (e.g. a button from before this).
-      var targetDate = action.value || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      slackOpenView_(payload.trigger_id, buildLogHoursModal_(projects, targetDate, totals));
+      var openModalClaimKey = 'trig_' + payload.trigger_id;
+      if (!claimOnce_(openModalClaimKey)) return ContentService.createTextOutput('');
+      try {
+        var projects = getActiveProjects_();
+        var totals = getProjectTotalsAllTime_();
+        // The reminder button carries the date it's for (today for the
+        // evening ping, the skipped day for the missed-entry nudge); fall
+        // back to today if it's missing (e.g. a button from before this).
+        var targetDate = action.value || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        slackOpenView_(payload.trigger_id, buildLogHoursModal_(projects, targetDate, totals));
+      } catch (err) {
+        releaseClaim_(openModalClaimKey);
+        Logger.log('open_log_hours_modal failed: ' + err);
+        throw err;
+      }
     } else if (action && (action.action_id === 'toggle_active' || action.action_id === 'toggle_archived')) {
       handleProjectToggle_(payload, action);
     }
@@ -137,29 +158,41 @@ function handleInteractivity_(payload) {
     // The critical dedup: without this, a Slack-retried delivery of the
     // same submission (see claimOnce_ in SlackApi.gs) would append a
     // second set of TimeEntries rows and double-increment UsedHours.
-    if (!claimOnce_('view_' + payload.view.id, 300)) {
+    var submitClaimKey = 'view_' + payload.view.id;
+    if (!claimOnce_(submitClaimKey, 300)) {
       return ContentService.createTextOutput('');
     }
 
-    var metadata = JSON.parse(payload.view.private_metadata);
-    var values = payload.view.state.values;
-    var projectHours = {};
-    var projectNotes = {};
-    var projectCategories = {};
-    metadata.projects.forEach(function (project, i) {
-      var raw = values['project_' + i] && values['project_' + i].hours && values['project_' + i].hours.value;
-      projectHours[project] = raw ? Number(raw) : 0;
-      var noteRaw = values['project_' + i + '_note'] && values['project_' + i + '_note'].value && values['project_' + i + '_note'].value.value;
-      projectNotes[project] = noteRaw || '';
-      projectCategories[project] = parseSubmittedCategories_(values, i);
-    });
+    try {
+      var metadata = JSON.parse(payload.view.private_metadata);
+      var values = payload.view.state.values;
+      var projectHours = {};
+      var projectNotes = {};
+      var projectCategories = {};
+      metadata.projects.forEach(function (project, i) {
+        var raw = values['project_' + i] && values['project_' + i].hours && values['project_' + i].hours.value;
+        projectHours[project] = raw ? Number(raw) : 0;
+        var noteRaw = values['project_' + i + '_note'] && values['project_' + i + '_note'].value && values['project_' + i + '_note'].value.value;
+        projectNotes[project] = noteRaw || '';
+        projectCategories[project] = parseSubmittedCategories_(values, i);
+      });
 
-    var totalsBefore = getProjectTotalsAllTime_();
-    appendTimeEntries_(payload.user.id, payload.user.name || payload.user.username, metadata.date, projectHours, projectNotes, projectCategories);
+      var totalsBefore = getProjectTotalsAllTime_();
+      appendTimeEntries_(payload.user.id, payload.user.name || payload.user.username, metadata.date, projectHours, projectNotes, projectCategories);
 
-    var projectsByName = {};
-    getAllProjects_().forEach(function (p) { projectsByName[p.name] = p; });
-    checkAndPostBudgetWarnings_(projectHours, totalsBefore, projectsByName);
+      var projectsByName = {};
+      getAllProjects_().forEach(function (p) { projectsByName[p.name] = p; });
+      checkAndPostBudgetWarnings_(projectHours, totalsBefore, projectsByName);
+    } catch (err) {
+      // Don't let a real failure (a Sheets error, a lock timeout) get
+      // permanently swallowed: release the claim so a Slack retry of this
+      // same submission -- or the person just hitting Submit again -- has
+      // an actual chance to succeed, instead of silently doing nothing
+      // every time because the claim already looked "handled".
+      releaseClaim_(submitClaimKey);
+      Logger.log('log_hours_submit failed: ' + err);
+      throw err;
+    }
 
     return ContentService.createTextOutput(''); // empty 200 closes the modal
   }
