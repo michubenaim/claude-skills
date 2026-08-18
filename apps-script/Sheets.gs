@@ -13,7 +13,7 @@
  * project, so it only fires once -- clear it back to FALSE to allow
  * another alert (e.g. after pushing EndDate out and it passes again).
  * UsedHours is a running total the bot maintains (see
- * incrementProjectUsedHours_) -- don't hand-edit it. Archived is separate
+ * incrementProjectUsedHoursBatch_) -- don't hand-edit it. Archived is separate
  * from Active: Active/inactive plus the date window governs whether a
  * project shows up in the daily modal; Archived governs whether it shows
  * up on the dashboard at all (default hidden once archived, with a
@@ -169,34 +169,47 @@ function appendTimeEntries_(userId, userName, dateStr, projectHours, projectNote
   // The whole team gets DMed at once every evening and tends to log around
   // the same time, so concurrent submissions racing on sheet.getLastRow()
   // (two writers both computing the same "next row" and clobbering each
-  // other) or on incrementProjectUsedHours_'s read-then-write are a real
-  // risk, not a theoretical one -- this is the standard Apps Script fix.
+  // other) or on the UsedHours read-then-write are a real risk, not a
+  // theoretical one -- this is the standard Apps Script fix. Kept well
+  // under Slack's ~3s response budget: waiting longer just delays an
+  // already-blown response without helping (the write still completes in
+  // the background either way -- see the try/catch in Code.gs).
   var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  lock.waitLock(5000);
   try {
     sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
-    rows.forEach(function (row) { incrementProjectUsedHours_(row[4], row[5]); });
+    var deltasByProject = {};
+    rows.forEach(function (row) { deltasByProject[row[4]] = (deltasByProject[row[4]] || 0) + row[5]; });
+    incrementProjectUsedHoursBatch_(deltasByProject);
   } finally {
     lock.releaseLock();
   }
   return rows.length;
 }
 
-// Bumps a single project's running UsedHours total in the Projects sheet by
-// deltaHours. Projects is small (dozens of rows at most) so this full read
-// is cheap, unlike scanning the ever-growing TimeEntries sheet. No-op if
-// the project isn't found (e.g. hours logged for a project row that's
-// since been renamed or deleted).
-function incrementProjectUsedHours_(projectName, deltaHours) {
+// Bumps each named project's running UsedHours total by its delta in a
+// single read + single write, regardless of how many distinct projects were
+// touched -- appendTimeEntries_ is on Slack's ~3s response budget, and a
+// separate read-then-write Sheets round trip per project (the original
+// approach) added real, measurable latency once someone logged hours
+// against more than one or two projects in the same submission.
+function incrementProjectUsedHoursBatch_(deltasByProject) {
   var sheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
   var rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return;
+
+  var changed = false;
   for (var i = 1; i < rows.length; i++) {
-    if (rows[i][0] === projectName) {
-      var current = Number(rows[i][PROJECTS_USED_HOURS_COL_ - 1]) || 0;
-      sheet.getRange(i + 1, PROJECTS_USED_HOURS_COL_).setValue(current + deltaHours);
-      return;
-    }
+    var name = rows[i][0];
+    if (!name || !Object.prototype.hasOwnProperty.call(deltasByProject, name)) continue;
+    var current = Number(rows[i][PROJECTS_USED_HOURS_COL_ - 1]) || 0;
+    rows[i][PROJECTS_USED_HOURS_COL_ - 1] = current + deltasByProject[name];
+    changed = true;
   }
+  if (!changed) return;
+
+  var usedHoursColumn = rows.slice(1).map(function (row) { return [row[PROJECTS_USED_HOURS_COL_ - 1]]; });
+  sheet.getRange(2, PROJECTS_USED_HOURS_COL_, usedHoursColumn.length, 1).setValues(usedHoursColumn);
 }
 
 // Merges live Slack users.list results into the Users sheet: adds anyone new
@@ -218,6 +231,51 @@ function syncUsersSheet_(slackUsers) {
   if (toAdd.length > 0) {
     sheet.getRange(sheet.getLastRow() + 1, 1, toAdd.length, toAdd[0].length).setValues(toAdd);
   }
+}
+
+// One-time (safe-to-rerun) cleanup: sets IncludeInReminders to FALSE for
+// everyone in the Users sheet except the names in REMINDER_KEEP_NAMES_
+// below -- an allowlist, not just a denylist, so it also covers anyone else
+// already in the sheet who wasn't named either way. Matches by
+// SlackUserName (case-insensitive, trimmed); the explicit IDs are matched
+// too as a belt-and-suspenders check in case a display name ever drifts
+// from what's stored. Returns a summary (surfaced by the doGet admin-action
+// handler) so you can confirm who ended up on which side without digging
+// through Executions.
+var REMINDER_REMOVE_IDS_ = [
+  'U0MHN98SD', 'U9Q3FMHRR', 'UC10QF0N6', 'UP86SBLQJ',
+  'U011P2HDV9B', 'U01E7SWR475', 'U024ZGZUKFV', 'U02D9NM9PFV'
+];
+var REMINDER_KEEP_NAMES_ = ['Michu Benaim Steiner', 'Lope Gutierrez-Ruiz', 'alexander wright', 'inkclear'];
+
+function pruneReminderRecipients_() {
+  var sheet = getOrCreateSheet_(USERS_SHEET, ['SlackUserID', 'SlackUserName', 'IncludeInReminders']);
+  var rows = sheet.getDataRange().getValues();
+  var keepNamesLower = REMINDER_KEEP_NAMES_.map(function (n) { return n.trim().toLowerCase(); });
+  var kept = [];
+  var excluded = [];
+
+  for (var i = 1; i < rows.length; i++) {
+    var id = rows[i][0];
+    var name = String(rows[i][1] || '').trim();
+    if (!id) continue;
+
+    var isExplicitlyRemoved = REMINDER_REMOVE_IDS_.indexOf(id) !== -1;
+    var isNamedKeep = keepNamesLower.indexOf(name.toLowerCase()) !== -1;
+    var shouldKeep = isNamedKeep && !isExplicitlyRemoved;
+
+    sheet.getRange(i + 1, 3).setValue(shouldKeep);
+    if (shouldKeep) {
+      kept.push(name + ' (' + id + ')');
+    } else {
+      excluded.push(name + ' (' + id + ')');
+    }
+  }
+
+  var summary = 'Kept (still reminded): ' + (kept.join(', ') || 'none') +
+    ' | Excluded (no longer reminded): ' + (excluded.join(', ') || 'none');
+  Logger.log(summary);
+  return summary;
 }
 
 function getReminderRecipients_() {
@@ -268,7 +326,7 @@ function computeMonthlyTally_(monthStr) {
 }
 
 // Returns { projectName: totalHoursEverLogged }, read from the Projects
-// sheet's UsedHours column (kept current by incrementProjectUsedHours_ on
+// sheet's UsedHours column (kept current by incrementProjectUsedHoursBatch_ on
 // every submission) -- O(number of projects), not O(size of TimeEntries).
 // This is on the hot path for /log-hours (Slack allows only ~3 seconds to
 // respond), so it must stay cheap regardless of how large TimeEntries

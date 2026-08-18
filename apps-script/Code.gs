@@ -22,7 +22,8 @@
 
 var ADMIN_ACTIONS_ = {
   backfillUsedHours: backfillProjectUsedHours_,
-  ensureSchemaColumns: ensureSchemaColumns_
+  ensureSchemaColumns: ensureSchemaColumns_,
+  pruneReminderRecipients: pruneReminderRecipients_
 };
 
 function doGet(e) {
@@ -34,8 +35,9 @@ function doGet(e) {
     if (!ADMIN_ACTIONS_[action]) {
       return ContentService.createTextOutput('Unknown action: ' + action);
     }
-    ADMIN_ACTIONS_[action]();
-    return ContentService.createTextOutput('Ran ' + action + '. Check the target sheet to confirm.');
+    var result = ADMIN_ACTIONS_[action]();
+    var summary = result ? ('\n' + result) : '';
+    return ContentService.createTextOutput('Ran ' + action + '. Check the target sheet to confirm.' + summary);
   }
 
   var email = Session.getActiveUser().getEmail();
