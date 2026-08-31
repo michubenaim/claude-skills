@@ -8,13 +8,13 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
 1. Create a new Google Sheet (any name, e.g. "Team Hours").
 2. Note its ID from the URL: `https://docs.google.com/spreadsheets/d/THIS_PART/edit`.
 3. Add a `Projects` tab with header row
-   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories`,
+   `ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories | CompletedDate`,
    then one row per project you want people to log hours against, e.g.:
 
-   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories |
-   |---|---|---|---|---|---|---|---|---|---|
-   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | | | | |
-   | Internal Tools | #internal-tools | TRUE | | | | | | | FALSE |
+   | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories | CompletedDate |
+   |---|---|---|---|---|---|---|---|---|---|---|
+   | Acme Rebrand | #acme-rebrand | TRUE | 120 | 2026-08-01 | 2026-10-15 | | | | | |
+   | Internal Tools | #internal-tools | TRUE | | | | | | | FALSE | |
 
    Leave `UsedHours` and `Archived` blank — the bot maintains/toggles them
    automatically (`Archived` can also be toggled from Slack via
@@ -22,7 +22,10 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
    `RequiresCategories` blank (or `TRUE`) for studio client projects that
    should show the full activity-category checkboxes in the modal; set it
    to `FALSE` for internal projects that don't need that level of detail
-   (like `Internal Tools` above).
+   (like `Internal Tools` above). Leave `CompletedDate` blank while a
+   project's in progress; set it to the delivery date once it ships so it
+   stops showing up to log hours against and stops reading as "late" on the
+   dashboard even after `EndDate` passes.
 
    `SlackChannel` is just for your own reference (which channel = which
    project); the bot doesn't read Slack channels automatically in v1.
@@ -39,7 +42,8 @@ internal-only Slack app. No paid tier, no third-party hosting, no credit card.
    `EndDate` passes, the bot also posts a one-time "past deadline" warning
    to `REPORT_CHANNEL_ID` and leaves `DeadlineAlerted` set to `TRUE` so it
    doesn't repeat every day — leave that column blank/`FALSE` yourself, the
-   bot manages it.
+   bot manages it (unless `CompletedDate` is set, in which case that
+   warning never fires at all).
 
 The `TimeEntries` and `Users` tabs are created automatically the first time
 the script runs.
@@ -240,7 +244,7 @@ from scratch):
    and dashboard deployments so the live URLs pick up the change (**Deploy
    > Manage deployments > Edit > New version**, for each).
 2. **Run the schema migration once.** Open this URL in a browser (fills in
-   the `Archived`/`RequiresCategories`/`Categories` headers on your
+   the `Archived`/`RequiresCategories`/`CompletedDate`/`Categories` headers on your
    existing sheets — safe to rerun):
    ```
    https://script.google.com/macros/s/YOUR_SLACK_DEPLOYMENT_ID/exec?action=ensureSchemaColumns&secret=YOUR_SHARED_SECRET

@@ -1,15 +1,15 @@
 /**
  * All Google Sheets read/write logic. Sheet tabs:
  *
- * Projects     | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories
+ * Projects     | ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories | CompletedDate
  * TimeEntries  | Timestamp | Date | SlackUserID | SlackUserName | Project | Hours | Note | Categories
  * Users        | SlackUserID | SlackUserName | IncludeInReminders
  *
  * Projects and Users are edited by a human admin (Active / IncludeInReminders
  * columns) -- or, for Active/Archived, via the /hours-projects Slack command
- * (see PROJECT_ADMIN_SLACK_IDS in Config.gs). BudgetHours, StartDate and
- * EndDate are all optional. DeadlineAlerted is written by the bot
- * (Triggers.gs) once it has posted a past-deadline warning for that
+ * (see PROJECT_ADMIN_SLACK_IDS in Config.gs). BudgetHours, StartDate,
+ * EndDate and CompletedDate are all optional. DeadlineAlerted is written by
+ * the bot (Triggers.gs) once it has posted a past-deadline warning for that
  * project, so it only fires once -- clear it back to FALSE to allow
  * another alert (e.g. after pushing EndDate out and it passes again).
  * UsedHours is a running total the bot maintains (see
@@ -21,21 +21,26 @@
  * shows the activity-category checkboxes for that project at all -- blank
  * defaults to TRUE (unchanged behavior) so existing projects aren't
  * silently affected; set it to FALSE for internal projects that don't need
- * that level of detail. TimeEntries is append-only, written by the bot;
- * Categories is a comma-joined list of the activity tags selected for that
- * row (multiple allowed; "Other: <text>" when Other is picked with detail),
- * blank if RequiresCategories was FALSE for that project. A MonthlyTally
- * tab (created once, manually) reads TimeEntries via QUERY formulas -- see
- * docs/SHEET_SCHEMA.md.
+ * that level of detail. CompletedDate marks a project delivered as of that
+ * date: set it (e.g. to today, the day you ship) and the project stops
+ * counting as "late" on the dashboard and stops appearing in the daily
+ * modal, regardless of what EndDate says -- see classifyProjectStatus_ in
+ * Analytics.gs. Leave it blank for anything still in progress. TimeEntries
+ * is append-only, written by the bot; Categories is a comma-joined list of
+ * the activity tags selected for that row (multiple allowed; "Other:
+ * <text>" when Other is picked with detail), blank if RequiresCategories
+ * was FALSE for that project. A MonthlyTally tab (created once, manually)
+ * reads TimeEntries via QUERY formulas -- see docs/SHEET_SCHEMA.md.
  */
 
 var PROJECTS_SHEET = 'Projects';
 var TIME_ENTRIES_SHEET = 'TimeEntries';
 var USERS_SHEET = 'Users';
-var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate', 'DeadlineAlerted', 'UsedHours', 'Archived', 'RequiresCategories'];
+var PROJECTS_HEADERS = ['ProjectName', 'SlackChannel', 'Active', 'BudgetHours', 'StartDate', 'EndDate', 'DeadlineAlerted', 'UsedHours', 'Archived', 'RequiresCategories', 'CompletedDate'];
 var PROJECTS_USED_HOURS_COL_ = 8; // 1-indexed -- keep in sync with PROJECTS_HEADERS position
 var PROJECTS_ARCHIVED_COL_ = 9; // 1-indexed -- keep in sync with PROJECTS_HEADERS position
 var PROJECTS_REQUIRES_CATEGORIES_COL_ = 10; // 1-indexed -- keep in sync with PROJECTS_HEADERS position
+var PROJECTS_COMPLETED_DATE_COL_ = 11; // 1-indexed -- keep in sync with PROJECTS_HEADERS position
 var TIME_ENTRIES_HEADERS = ['Timestamp', 'Date', 'SlackUserID', 'SlackUserName', 'Project', 'Hours', 'Note', 'Categories'];
 
 // Cached for the lifetime of a single execution only (Apps Script does not
@@ -62,19 +67,21 @@ function getOrCreateSheet_(name, headers) {
 }
 
 // Returns every row in Projects as { name, channel, active, budget,
-// startDate, endDate, overdue, archived }. `active` folds together the
-// manual Active checkbox AND the StartDate/EndDate window: a project with
-// Active=TRUE but a StartDate in the future, or an EndDate that's passed,
-// comes back active:false -- so a project auto-retires on its EndDate
-// without anyone having to remember to flip the checkbox. `overdue` is
-// true once EndDate has passed, independent of `active`, so callers can
-// flag it even though it's no longer showing in the daily modal.
-// `archived` is independent of `active`/the date window -- it's a
-// separate "hide from the dashboard entirely" flag, toggled via
-// /hours-projects or the Archived column directly. startDate/endDate are
-// Date objects or null (EndDate is optional -- leave it blank for an
-// ongoing project with no deadline). budget is a Number, or null if
-// BudgetHours is blank (uncapped).
+// startDate, endDate, overdue, archived, completed, completedDate }.
+// `active` folds together the manual Active checkbox, the StartDate/EndDate
+// window, AND completion: a project with Active=TRUE but a StartDate in the
+// future, an EndDate that's passed, or a CompletedDate set at all, comes
+// back active:false -- so a project auto-retires on its EndDate, or the
+// moment it's marked delivered, without anyone having to remember to flip
+// the checkbox. `overdue` is true once EndDate has passed, independent of
+// `active`/`completed`, so callers can flag it even though it's no longer
+// showing in the daily modal. `archived` is independent of `active`/the
+// date window -- it's a separate "hide from the dashboard entirely" flag,
+// toggled via /hours-projects or the Archived column directly.
+// startDate/endDate/completedDate are Date objects or null (all optional --
+// leave EndDate blank for an ongoing project with no deadline, leave
+// CompletedDate blank for anything still in progress). budget is a Number,
+// or null if BudgetHours is blank (uncapped).
 function getAllProjects_() {
   var sheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
   var rows = sheet.getDataRange().getValues();
@@ -89,6 +96,8 @@ function getAllProjects_() {
     var endDate = parseSheetDate_(rows[i][5]);
     var archivedFlag = rows[i][PROJECTS_ARCHIVED_COL_ - 1];
     var requiresCategoriesFlag = rows[i][PROJECTS_REQUIRES_CATEGORIES_COL_ - 1];
+    var completedDate = parseSheetDate_(rows[i][PROJECTS_COMPLETED_DATE_COL_ - 1]);
+    var completed = !!completedDate;
     var overdue = !!endDate && today > endOfDay_(endDate);
     var withinWindow = (!startDate || today >= startDate) && !overdue;
     var archived = archivedFlag === true || String(archivedFlag).toUpperCase() === 'TRUE';
@@ -101,14 +110,16 @@ function getAllProjects_() {
     projects.push({
       name: name,
       channel: rows[i][1],
-      active: rawActive && withinWindow && !archived,
-      rawActive: rawActive, // the literal Active checkbox, ignoring dates/archived -- toggle against this, not `active`
+      active: rawActive && withinWindow && !archived && !completed,
+      rawActive: rawActive, // the literal Active checkbox, ignoring dates/archived/completed -- toggle against this, not `active`
       budget: (budgetRaw === '' || budgetRaw === null || budgetRaw === undefined) ? null : Number(budgetRaw),
       startDate: startDate,
       endDate: endDate,
       overdue: overdue,
       archived: archived,
-      requiresCategories: requiresCategories
+      requiresCategories: requiresCategories,
+      completed: completed,
+      completedDate: completedDate
     });
   }
   return projects;
@@ -381,14 +392,14 @@ function backfillProjectUsedHours_() {
   Logger.log('Backfilled UsedHours for ' + (rows.length - 1) + ' project row(s).');
 }
 
-// One-time (safe-to-rerun) migration: adds the Archived and
-// RequiresCategories headers to Projects and the Categories header to
+// One-time (safe-to-rerun) migration: adds the Archived, RequiresCategories,
+// and CompletedDate headers to Projects and the Categories header to
 // TimeEntries if the sheet was created before those columns existed. All
-// three are fine left blank for existing rows (blank Archived = not
+// four are fine left blank for existing rows (blank Archived = not
 // archived, blank RequiresCategories = defaults to TRUE -- see
-// getAllProjects_ --, blank Categories = no tags recorded for that
-// historical entry), so there's no data to backfill here -- just the
-// header cells.
+// getAllProjects_ --, blank CompletedDate = not completed, blank Categories
+// = no tags recorded for that historical entry), so there's no data to
+// backfill here -- just the header cells.
 function ensureSchemaColumns_() {
   var projectsSheet = getOrCreateSheet_(PROJECTS_SHEET, PROJECTS_HEADERS);
   if (String(projectsSheet.getRange(1, PROJECTS_ARCHIVED_COL_).getValue()) !== 'Archived') {
@@ -397,6 +408,9 @@ function ensureSchemaColumns_() {
   if (String(projectsSheet.getRange(1, PROJECTS_REQUIRES_CATEGORIES_COL_).getValue()) !== 'RequiresCategories') {
     projectsSheet.getRange(1, PROJECTS_REQUIRES_CATEGORIES_COL_).setValue('RequiresCategories');
   }
+  if (String(projectsSheet.getRange(1, PROJECTS_COMPLETED_DATE_COL_).getValue()) !== 'CompletedDate') {
+    projectsSheet.getRange(1, PROJECTS_COMPLETED_DATE_COL_).setValue('CompletedDate');
+  }
 
   var entriesSheet = getOrCreateSheet_(TIME_ENTRIES_SHEET, TIME_ENTRIES_HEADERS);
   var categoriesCol = TIME_ENTRIES_HEADERS.length; // last column, 1-indexed since length == last index + 1
@@ -404,7 +418,7 @@ function ensureSchemaColumns_() {
     entriesSheet.getRange(1, categoriesCol).setValue('Categories');
   }
 
-  Logger.log('Schema columns ensured: Projects.Archived, Projects.RequiresCategories, TimeEntries.Categories.');
+  Logger.log('Schema columns ensured: Projects.Archived, Projects.RequiresCategories, Projects.CompletedDate, TimeEntries.Categories.');
 }
 
 // Returns { projectName: hoursLoggedStrictlyBeforeThisMonth }. Used to

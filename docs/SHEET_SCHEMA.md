@@ -3,16 +3,16 @@
 ## Tabs (auto-created except `Projects`, which you fill in yourself)
 
 **Projects** (you maintain this, except `UsedHours` -- see below)
-| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories |
-|---|---|---|---|---|---|---|---|---|---|
+| ProjectName | SlackChannel | Active | BudgetHours | StartDate | EndDate | DeadlineAlerted | UsedHours | Archived | RequiresCategories | CompletedDate |
+|---|---|---|---|---|---|---|---|---|---|---|
 
-`BudgetHours`, `StartDate`, and `EndDate` are all optional (leave `EndDate`
-blank for an ongoing project with no deadline). `BudgetHours` left blank
-means uncapped; when set, it's a lifetime allocation (not scoped to a
-month): the modal shows remaining hours next to the project, `/hours-report`
-shows the balance at the start of the queried month and what's left after
-it, and the bot posts a warning to `REPORT_CHANNEL_ID` when a project
-crosses 90% and 100% used.
+`BudgetHours`, `StartDate`, `EndDate`, and `CompletedDate` are all optional
+(leave `EndDate` blank for an ongoing project with no deadline).
+`BudgetHours` left blank means uncapped; when set, it's a lifetime
+allocation (not scoped to a month): the modal shows remaining hours next to
+the project, `/hours-report` shows the balance at the start of the queried
+month and what's left after it, and the bot posts a warning to
+`REPORT_CHANNEL_ID` when a project crosses 90% and 100% used.
 `StartDate`/`EndDate` gate whether a project shows up at all: it only
 appears once `StartDate` arrives and automatically stops appearing after
 `EndDate` passes, on top of the `Active` checkbox (which still works as a
@@ -20,6 +20,15 @@ manual pause independent of the dates). Once `EndDate` passes, the bot also
 posts a "past deadline" warning to `REPORT_CHANNEL_ID` and sets
 `DeadlineAlerted` to `TRUE` so it only fires once — clear it back to
 `FALSE` (e.g. after pushing `EndDate` out) to allow another alert later.
+
+`CompletedDate` marks a project as delivered: set it to the date you
+shipped (leave it blank for anything still in progress) and the project
+immediately stops appearing in the daily modal, stops counting as "late" on
+the dashboard even if `EndDate` has since passed, and stops triggering the
+"past deadline" Slack warning. On the dashboard it shows a **Completed**
+badge in place of the schedule status instead. It's independent of
+`Active`/`Archived` — you can still leave a completed project un-archived
+for a while if you want it visible on the dashboard for reporting.
 
 `UsedHours` is a running total the bot maintains automatically (incremented
 on every submission) so it can answer "how much budget is left" in O(1)
@@ -150,7 +159,8 @@ combination is selected:
 
 - **Project status cards** — for each project, two independent badges:
   a budget status (*On track* / *At risk* / *Over budget* / *Uncapped*) and
-  a schedule status (*On schedule* / *Late* / *No deadline*), plus the
+  a schedule status (*On schedule* / *Late* / *No deadline* / *Completed*,
+  once `CompletedDate` is set — see above), plus the
   all-time budget bar and hours logged in the selected range. "At risk"
   means the project is burning budget faster than its `StartDate`/`EndDate`
   window justifies (or, with no dates set, is at/above 90% used) — see the

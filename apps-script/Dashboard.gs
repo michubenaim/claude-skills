@@ -320,8 +320,8 @@ var DASHBOARD_CLIENT_JS_ = '' +
 '  return div.innerHTML;\n' +
 '}\n' +
 '\n' +
-'var DASH_BADGE_LABELS = { over_budget: "Over budget", at_risk: "At risk", on_track: "On track", uncapped: "Uncapped", late: "Late", on_schedule: "On schedule", no_deadline: "No deadline" };\n' +
-'var DASH_BADGE_CLASS = { over_budget: "bad", at_risk: "warn", on_track: "good", late: "bad", on_schedule: "good" };\n' +
+'var DASH_BADGE_LABELS = { over_budget: "Over budget", at_risk: "At risk", on_track: "On track", uncapped: "Uncapped", late: "Late", on_schedule: "On schedule", no_deadline: "No deadline", completed: "Completed" };\n' +
+'var DASH_BADGE_CLASS = { over_budget: "bad", at_risk: "warn", on_track: "good", late: "bad", on_schedule: "good", completed: "good" };\n' +
 'function dashBadge(key) {\n' +
 '  if (!key) return "";\n' +
 '  return "<span class=\\"badge badge-" + (DASH_BADGE_CLASS[key] || "neutral") + "\\">" + (DASH_BADGE_LABELS[key] || key) + "</span>";\n' +

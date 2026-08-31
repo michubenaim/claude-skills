@@ -113,7 +113,10 @@ function postMonthlyTally() {
 
 // Posts a warning to REPORT_CHANNEL_ID the first time a project's EndDate
 // is found to be in the past, then marks DeadlineAlerted so it won't repeat
-// every day. Projects with no EndDate (ongoing, no deadline) are skipped.
+// every day. Projects with no EndDate (ongoing, no deadline) are skipped,
+// as are projects with a CompletedDate set -- a project that's already been
+// delivered shouldn't get a "past deadline" nag just because its EndDate
+// has since gone by.
 function checkProjectDeadlines() {
   var reportChannel = getReportChannelId_();
   if (!reportChannel) return;
@@ -127,6 +130,7 @@ function checkProjectDeadlines() {
     if (!name) continue;
     var endDate = parseSheetDate_(rows[i][5]);
     if (!endDate) continue;
+    if (parseSheetDate_(rows[i][PROJECTS_COMPLETED_DATE_COL_ - 1])) continue;
 
     var alertedFlag = rows[i][6];
     var alreadyAlerted = alertedFlag === true || String(alertedFlag).toUpperCase() === 'TRUE';

@@ -154,6 +154,9 @@ function buildBurndownSeries_(entries, projects, rangeStart, rangeEnd) {
 //   'on_track'    neither of the above
 //
 // scheduleStatus:
+//   'completed'   CompletedDate is set -- takes priority over everything
+//                 else below, so a delivered project never reads as late
+//                 just because EndDate has since passed
 //   'no_deadline' no EndDate set
 //   'late'        EndDate has passed (see getAllProjects_'s `overdue`)
 //   'on_schedule' EndDate set and not yet passed
@@ -181,7 +184,7 @@ function classifyProjectStatus_(project, usedAllTime) {
     budgetStatus = 'uncapped';
   }
 
-  var scheduleStatus = project.overdue ? 'late' : (project.endDate ? 'on_schedule' : 'no_deadline');
+  var scheduleStatus = project.completed ? 'completed' : (project.overdue ? 'late' : (project.endDate ? 'on_schedule' : 'no_deadline'));
 
   return { budgetStatus: budgetStatus, scheduleStatus: scheduleStatus, budgetPct: budgetPct };
 }
@@ -197,7 +200,9 @@ function projectsForClient_(projects) {
       overdue: p.overdue,
       budget: p.budget,
       startDate: p.startDate ? formatDate_(p.startDate) : null,
-      endDate: p.endDate ? formatDate_(p.endDate) : null
+      endDate: p.endDate ? formatDate_(p.endDate) : null,
+      completed: p.completed,
+      completedDate: p.completedDate ? formatDate_(p.completedDate) : null
     };
   });
 }

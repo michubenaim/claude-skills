@@ -145,9 +145,14 @@ function buildProjectsAdminBlocks_(projects) {
   projects.forEach(function (p) {
     // Status reflects the raw Active checkbox (what the button below
     // actually toggles); a separate note flags when it's checked on but
-    // not currently showing in the modal anyway due to StartDate/EndDate.
+    // not currently showing in the modal anyway due to StartDate/EndDate
+    // or CompletedDate.
     var status = [p.rawActive ? ':large_green_circle: Active' : ':white_circle: Inactive'];
-    if (p.rawActive && !p.active && !p.archived) status.push('(outside its date window right now)');
+    if (p.completed) {
+      status.push(':white_check_mark: Completed ' + formatDate_(p.completedDate));
+    } else if (p.rawActive && !p.active && !p.archived) {
+      status.push('(outside its date window right now)');
+    }
     if (p.archived) status.push(':package: Archived (hidden from dashboard)');
 
     blocks.push({
