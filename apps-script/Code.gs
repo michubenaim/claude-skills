@@ -23,7 +23,9 @@
 var ADMIN_ACTIONS_ = {
   backfillUsedHours: backfillProjectUsedHours_,
   ensureSchemaColumns: ensureSchemaColumns_,
-  pruneReminderRecipients: pruneReminderRecipients_
+  pruneReminderRecipients: pruneReminderRecipients_,
+  listTriggers: listTriggers_,
+  reinstallTriggers: reinstallAndReport_
 };
 
 function doGet(e) {
