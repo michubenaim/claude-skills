@@ -67,7 +67,14 @@ function getOrCreateSheet_(name, headers) {
 }
 
 // Returns every row in Projects as { name, channel, active, budget,
-// startDate, endDate, overdue, archived, completed, completedDate }.
+// startDate, endDate, overdue, archived, completed, completedDate,
+// usedHours }. `usedHours` is read from the same row (the UsedHours
+// column) this function already fetches -- callers that need both the
+// project list AND its running totals (the log-hours modal-opening paths)
+// should build a totals map from this array instead of also calling
+// getProjectTotalsAllTime_ separately, which would re-read the whole sheet
+// a second time for no reason and add avoidable latency on Slack's ~3s
+// response budget.
 // `active` folds together the manual Active checkbox, the StartDate/EndDate
 // window, AND completion: a project with Active=TRUE but a StartDate in the
 // future, an EndDate that's passed, or a CompletedDate set at all, comes
@@ -119,7 +126,8 @@ function getAllProjects_() {
       archived: archived,
       requiresCategories: requiresCategories,
       completed: completed,
-      completedDate: completedDate
+      completedDate: completedDate,
+      usedHours: Number(rows[i][PROJECTS_USED_HOURS_COL_ - 1]) || 0
     });
   }
   return projects;
@@ -127,6 +135,17 @@ function getAllProjects_() {
 
 function getActiveProjects_() {
   return getAllProjects_().filter(function (p) { return p.active; });
+}
+
+// { projectName: usedHours } from an already-fetched getAllProjects_()
+// array -- lets callers that need both the project list and a totals map
+// (the log-hours modal-opening paths, the submission handler) get both
+// from ONE sheet read instead of also calling getProjectTotalsAllTime_
+// separately. See the getAllProjects_ doc comment above.
+function totalsFromProjects_(projects) {
+  var totals = {};
+  projects.forEach(function (p) { totals[p.name] = p.usedHours; });
+  return totals;
 }
 
 // Toggles a single boolean flag cell for a project (Active or Archived).

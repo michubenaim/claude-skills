@@ -84,7 +84,7 @@ function handleLogHoursCommand_(params) {
   if (!claimOnce_(claimKey)) return ContentService.createTextOutput('');
   try {
     var projects = getActiveProjects_();
-    var totals = getProjectTotalsAllTime_();
+    var totals = totalsFromProjects_(projects);
     var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     slackOpenView_(params.trigger_id, buildLogHoursModal_(projects, today, totals));
   } catch (err) {
@@ -120,7 +120,8 @@ function handleInteractivity_(payload) {
     try {
       if (payload.callback_id === 'log_hours_shortcut') {
         var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-        slackOpenView_(payload.trigger_id, buildLogHoursModal_(getActiveProjects_(), today, getProjectTotalsAllTime_()));
+        var shortcutProjects = getActiveProjects_();
+        slackOpenView_(payload.trigger_id, buildLogHoursModal_(shortcutProjects, today, totalsFromProjects_(shortcutProjects)));
       } else if (payload.callback_id === 'open_dashboard_shortcut') {
         slackOpenView_(payload.trigger_id, buildDashboardLinkModal_(getDashboardUrl_()));
       }
@@ -140,7 +141,7 @@ function handleInteractivity_(payload) {
       if (!claimOnce_(openModalClaimKey)) return ContentService.createTextOutput('');
       try {
         var projects = getActiveProjects_();
-        var totals = getProjectTotalsAllTime_();
+        var totals = totalsFromProjects_(projects);
         // The reminder button carries the date it's for (today for the
         // evening ping, the skipped day for the missed-entry nudge); fall
         // back to today if it's missing (e.g. a button from before this).
@@ -181,11 +182,18 @@ function handleInteractivity_(payload) {
         projectCategories[project] = parseSubmittedCategories_(values, i);
       });
 
-      var totalsBefore = getProjectTotalsAllTime_();
+      // One read covers both totalsBefore and projectsByName below --
+      // calling getProjectTotalsAllTime_ and then getAllProjects_ again
+      // after the write used to mean 3 separate full reads of Projects in
+      // this single request, adding avoidable latency on Slack's ~3s
+      // response budget for what should be a fast round trip.
+      var projectsSnapshot = getAllProjects_();
+      var totalsBefore = totalsFromProjects_(projectsSnapshot);
+      var projectsByName = {};
+      projectsSnapshot.forEach(function (p) { projectsByName[p.name] = p; });
+
       appendTimeEntries_(payload.user.id, payload.user.name || payload.user.username, metadata.date, projectHours, projectNotes, projectCategories);
 
-      var projectsByName = {};
-      getAllProjects_().forEach(function (p) { projectsByName[p.name] = p; });
       checkAndPostBudgetWarnings_(projectHours, totalsBefore, projectsByName);
     } catch (err) {
       // Don't let a real failure (a Sheets error, a lock timeout) get
