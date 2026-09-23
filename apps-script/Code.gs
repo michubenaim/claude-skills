@@ -84,7 +84,7 @@ function handleLogHoursCommand_(params) {
   var claimKey = 'trig_' + params.trigger_id;
   if (!claimOnce_(claimKey)) return ContentService.createTextOutput('');
   try {
-    var projects = getActiveProjects_();
+    var projects = getActiveProjectsForModal_();
     var totals = totalsFromProjects_(projects);
     var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     slackOpenView_(params.trigger_id, buildLogHoursModal_(projects, today, totals));
@@ -121,7 +121,7 @@ function handleInteractivity_(payload) {
     try {
       if (payload.callback_id === 'log_hours_shortcut') {
         var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-        var shortcutProjects = getActiveProjects_();
+        var shortcutProjects = getActiveProjectsForModal_();
         slackOpenView_(payload.trigger_id, buildLogHoursModal_(shortcutProjects, today, totalsFromProjects_(shortcutProjects)));
       } else if (payload.callback_id === 'open_dashboard_shortcut') {
         slackOpenView_(payload.trigger_id, buildDashboardLinkModal_(getDashboardUrl_()));
@@ -141,7 +141,7 @@ function handleInteractivity_(payload) {
       var openModalClaimKey = 'trig_' + payload.trigger_id;
       if (!claimOnce_(openModalClaimKey)) return ContentService.createTextOutput('');
       try {
-        var projects = getActiveProjects_();
+        var projects = getActiveProjectsForModal_();
         var totals = totalsFromProjects_(projects);
         // The reminder button carries the date it's for (today for the
         // evening ping, the skipped day for the missed-entry nudge); fall

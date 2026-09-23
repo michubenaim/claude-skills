@@ -193,6 +193,20 @@ those users to activate/deactivate/archive projects directly from Slack.
   completed (see `listTriggers`/`reinstallTriggers` above), and basic Sheet
   health (row counts, the most recent `TimeEntries` dates, so you can tell
   at a glance whether data is still flowing in).
+- The "We had some trouble connecting" banner can still occasionally show
+  when opening or submitting the modal, even though the data saves
+  correctly. This is an Apps Script limitation, not a bug you can fully
+  eliminate: it can't acknowledge Slack's request and then keep working in
+  the background the way a normal server can -- the whole function (every
+  Sheets read/write, every Slack API call) has to finish before Apps
+  Script sends anything back, and Slack's client gives up waiting after
+  ~3 seconds regardless. The Sheets reads on this path are already reduced
+  to the minimum (one, cached for `ACTIVE_PROJECTS_CACHE_TTL_` seconds in
+  `Sheets.gs` so a burst of people opening the modal right after the
+  evening reminder only pays for one real read), but a slow moment from
+  Google's or Slack's own infrastructure can still occasionally push past
+  3 seconds. If you see the banner, your entry is very likely fine --
+  check `TimeEntries` (or the dashboard) to confirm rather than resubmitting.
 - The evening DM goes to everyone Slack returns from `users.list` (minus
   bots), synced into the `Users` tab. Flip `IncludeInReminders` to `FALSE`
   for anyone who shouldn't get the nightly ping.

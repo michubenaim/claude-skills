@@ -137,6 +137,33 @@ function getActiveProjects_() {
   return getAllProjects_().filter(function (p) { return p.active; });
 }
 
+// A short-lived cache of just the fields buildLogHoursModal_ actually needs
+// (name, budget, requiresCategories, usedHours -- no Date objects, so it's
+// safely JSON-serializable for CacheService). Modal-opening is the hottest,
+// most latency-sensitive path in this whole script (Slack's ~3s response
+// budget), and your team gets DMed all at once every evening -- several
+// people often open the modal within the same minute or two, in which case
+// only the first one actually reads the sheet; the rest reuse that result.
+// Tradeoff: a change to a project's Active/StartDate/EndDate/Archived/
+// CompletedDate/BudgetHours/RequiresCategories can take up to
+// ACTIVE_PROJECTS_CACHE_TTL_ seconds to show up in a newly-opened modal --
+// an easy trade for an internal tool where project setup doesn't change
+// minute to minute.
+var ACTIVE_PROJECTS_CACHE_KEY_ = 'active_projects_for_modal_v1';
+var ACTIVE_PROJECTS_CACHE_TTL_ = 20;
+
+function getActiveProjectsForModal_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(ACTIVE_PROJECTS_CACHE_KEY_);
+  if (cached) return JSON.parse(cached);
+
+  var projects = getActiveProjects_().map(function (p) {
+    return { name: p.name, budget: p.budget, requiresCategories: p.requiresCategories, usedHours: p.usedHours };
+  });
+  cache.put(ACTIVE_PROJECTS_CACHE_KEY_, JSON.stringify(projects), ACTIVE_PROJECTS_CACHE_TTL_);
+  return projects;
+}
+
 // { projectName: usedHours } from an already-fetched getAllProjects_()
 // array -- lets callers that need both the project list and a totals map
 // (the log-hours modal-opening paths, the submission handler) get both
@@ -156,10 +183,19 @@ function setProjectFlag_(projectName, columnIndex1Based, value) {
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === projectName) {
       sheet.getRange(i + 1, columnIndex1Based).setValue(value);
+      invalidateActiveProjectsCache_();
       return true;
     }
   }
   return false;
+}
+
+// Clears the getActiveProjectsForModal_ cache -- called anywhere Active,
+// Archived, BudgetHours, or UsedHours changes, so a toggle from
+// /hours-projects or a fresh submission shows up in the next modal open
+// right away instead of waiting out the full TTL.
+function invalidateActiveProjectsCache_() {
+  CacheService.getScriptCache().remove(ACTIVE_PROJECTS_CACHE_KEY_);
 }
 
 function parseSheetDate_(value) {
@@ -214,6 +250,7 @@ function appendTimeEntries_(userId, userName, dateStr, projectHours, projectNote
   } finally {
     lock.releaseLock();
   }
+  invalidateActiveProjectsCache_();
   return rows.length;
 }
 
