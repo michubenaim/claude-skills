@@ -25,7 +25,8 @@ var ADMIN_ACTIONS_ = {
   ensureSchemaColumns: ensureSchemaColumns_,
   pruneReminderRecipients: pruneReminderRecipients_,
   listTriggers: listTriggers_,
-  reinstallTriggers: reinstallAndReport_
+  reinstallTriggers: reinstallAndReport_,
+  diagnostics: runDiagnostics_
 };
 
 function doGet(e) {

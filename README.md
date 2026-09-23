@@ -80,6 +80,7 @@ apps-script/
   Budgets.gs     Project budget threshold-crossing warnings
   Analytics.gs   Timeframe resolution, tallies, project status classification
   Dashboard.gs   Interactive HTML dashboard (charts, tables, Sheet export)
+  Diagnostics.gs One-click health check (Slack token, Script Properties, triggers, sheet activity)
   appsscript.json
 docs/
   SETUP.md               step-by-step setup

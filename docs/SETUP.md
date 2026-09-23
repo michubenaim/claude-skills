@@ -178,6 +178,21 @@ those users to activate/deactivate/archive projects directly from Slack.
 
 ## Notes / limits
 
+- **If something stops working** (reminders not going out, `/log-hours`
+  erroring, anything that used to work suddenly doesn't), check this first
+  — it surfaces the most common causes in one page instead of digging
+  through the Apps Script editor:
+  ```
+  https://script.google.com/macros/s/YOUR_SLACK_DEPLOYMENT_ID/exec?action=diagnostics&secret=YOUR_SHARED_SECRET
+  ```
+  It reports: whether the Slack bot token is still valid (`slackAuthTest` —
+  a revoked or rotated token, e.g. from reinstalling the Slack app, breaks
+  every Slack API call at once and is the single most common "it just
+  stopped working" cause), which Script Properties are actually set,
+  whether all 4 scheduled triggers are installed and when each last
+  completed (see `listTriggers`/`reinstallTriggers` above), and basic Sheet
+  health (row counts, the most recent `TimeEntries` dates, so you can tell
+  at a glance whether data is still flowing in).
 - The evening DM goes to everyone Slack returns from `users.list` (minus
   bots), synced into the `Users` tab. Flip `IncludeInReminders` to `FALSE`
   for anyone who shouldn't get the nightly ping.
